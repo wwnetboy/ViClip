@@ -1,0 +1,30 @@
+{
+  "$schema": "../gen/schemas/desktop-schema.json",
+  "identifier": "default",
+  "description": "enables the default permissions",
+  "windows": ["main", "radial-menu", "toast", "image-preview-*"],
+  "permissions": [
+    "core:webview:allow-create-webview-window",
+    "core:default",
+    "core:window:allow-set-size",
+    "core:window:allow-set-position",
+    "core:window:allow-set-focus",
+    "core:window:allow-show",
+    "core:window:allow-hide",
+    "core:window:allow-minimize",
+    "core:window:allow-start-dragging",
+    "core:window:allow-set-always-on-top",
+    "core:window:allow-close",
+    "core:window:allow-destroy",
+    "core:window:allow-maximize",
+    "core:window:allow-unmaximize",
+    "core:window:allow-toggle-maximize",
+    "core:window:allow-is-maximized",
+    "core:window:allow-inner-size",
+    "core:window:allow-set-title",
+    "clipboard-manager:default",
+    "global-shortcut:default",
+    "process:default",
+    "autostart:default"
+  ]
+}

@@ -1,0 +1,139 @@
+/* === Image Preview Window === */
+.image-preview-window {
+  width: 100%;
+  height: 100%;
+  display: flex;
+  flex-direction: column;
+  background: var(--glass-bg, rgba(24, 24, 24, 0.85));
+  color: var(--text-primary);
+  overflow: hidden;
+  user-select: none;
+}
+
+/* ── Custom Title Bar ── */
+.preview-titlebar {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  height: 32px;
+  padding: 0 5px 0 12px;
+  flex-shrink: 0;
+  background: var(--panel-header-bg, rgba(0, 0, 0, 0.25));
+}
+
+.preview-titlebar-title {
+  display: flex;
+  align-items: center;
+  pointer-events: none;
+}
+
+.preview-titlebar-label {
+  font-size: 12px;
+  font-weight: 500;
+  color: var(--text-secondary);
+}
+
+.preview-titlebar-size {
+  font-size: 11px;
+  color: var(--text-secondary);
+  font-variant-numeric: tabular-nums;
+  opacity: 0.7;
+}
+
+.preview-titlebar-controls {
+  display: flex;
+  align-items: center;
+  height: 100%;
+}
+
+.preview-ctrl-btn {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 38px;
+  height: 100%;
+  border: none;
+  border-radius: 0;
+  background: transparent;
+  color: var(--text-secondary);
+  cursor: pointer;
+  transition: background 0.1s ease, color 0.1s ease;
+}
+
+.preview-ctrl-btn:hover {
+  background: var(--nav-item-hover-bg);
+  color: var(--text-primary);
+}
+
+.preview-ctrl-btn.close:hover {
+  background: var(--nav-item-hover-bg);
+  color: var(--text-primary);
+}
+
+.preview-ctrl-btn.pin {
+  margin-right: 4px;
+}
+
+.preview-ctrl-btn.pin.active {
+  color: var(--accent, #007AFF);
+}
+
+.preview-ctrl-btn.pin.active:hover {
+  color: var(--accent, #007AFF);
+  opacity: 0.8;
+}
+
+.preview-ctrl-btn svg {
+  width: 14px;
+  height: 14px;
+}
+
+.preview-ctrl-btn.pin svg {
+  width: 15px;
+  height: 15px;
+}
+
+/* ── Content Area ── */
+.image-preview-content {
+  flex: 1;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  overflow: hidden;
+  padding: 1px;
+}
+
+.image-preview-img {
+  max-width: 100%;
+  max-height: 100%;
+  width: auto;
+  height: auto;
+  object-fit: cover;
+  display: block;
+}
+
+/* ── Empty State ── */
+.image-preview-empty {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 12px;
+  color: var(--text-tertiary);
+}
+
+.image-preview-empty svg {
+  width: 48px;
+  height: 48px;
+  opacity: 0.4;
+}
+
+.image-preview-empty span {
+  font-size: 13px;
+}
+
+/* ── Light theme overrides ── */
+[data-theme="light"] .image-preview-img {
+  box-shadow: 0 2px 16px rgba(0, 0, 0, 0.12);
+}

@@ -1,0 +1,289 @@
+/* === PingFang Font (subset WOFF2) === */
+@font-face {
+  font-family: 'PingFang';
+  src: url('/fonts/PingFang-Regular.woff2') format('woff2');
+  font-weight: 400;
+  font-style: normal;
+  font-display: swap;
+}
+@font-face {
+  font-family: 'PingFang';
+  src: url('/fonts/PingFang-Medium.woff2') format('woff2');
+  font-weight: 500;
+  font-style: normal;
+  font-display: swap;
+}
+@font-face {
+  font-family: 'PingFang';
+  src: url('/fonts/PingFang-Semibold.woff2') format('woff2');
+  font-weight: 600;
+  font-style: normal;
+  font-display: swap;
+}
+@font-face {
+  font-family: 'PingFang';
+  src: url('/fonts/PingFang-Light.woff2') format('woff2');
+  font-weight: 300;
+  font-style: normal;
+  font-display: swap;
+}
+
+/* === SF Pro Display Black (Brand, subset WOFF2) === */
+@font-face {
+  font-family: 'SF Pro Display';
+  src: url('/fonts/SF-Pro-Display-Black.woff2') format('woff2');
+  font-weight: 800;
+  font-style: normal;
+  font-display: swap;
+}
+
+/* === Design Tokens === */
+:root {
+  --bg-primary: #F2F2F7;
+  --bg-card: #FFFFFF;
+  --bg-card-hover: #F2F2F7;
+  --text-primary: #1C1C1E;
+  --text-secondary: #8E8E93;
+  --text-tertiary: #C7C7CC;
+  --separator: rgba(0, 0, 0, 0.08);
+  --accent: #007AFF;
+  --accent-bg: rgba(0, 122, 255, 0.1);
+  --danger: #FF3B30;
+  --shadow: 0 1px 3px rgba(0,0,0,0.08);
+  --glass-bg: rgba(242, 242, 247, 0.65);
+  --radius-sm: 8px;
+  --radius: 12px;
+  --radius-lg: 16px;
+  --tab-height: 56px;
+  --header-height: 44px;
+
+  /* Typography */
+  --font: "PingFang", -apple-system, BlinkMacSystemFont, "Segoe UI", "Helvetica Neue", sans-serif;
+  --font-mono: "SF Mono", "Menlo", "Consolas", monospace;
+  --font-brand: "SF Pro Display", "PingFang", -apple-system, BlinkMacSystemFont, sans-serif;
+  --text-xs: 10.5px;
+  --text-sm: 12px;
+  --text-base: 14px;
+  --text-md: 15px;
+  --text-lg: 17px;
+  --weight-light: 300;
+  --weight-normal: 400;
+  --weight-medium: 500;
+  --weight-semibold: 600;
+  --sidebar-bg: rgba(242, 242, 247, 0.68);
+  --sidebar-border: rgba(0, 0, 0, 0.06);
+  --panel-bg: rgba(255, 255, 255, 0.72);
+  --panel-header-bg: rgba(255, 255, 255, 0.35);
+  --nav-item-color: rgba(60, 60, 67, 0.5);
+  --nav-item-hover-bg: rgba(0, 0, 0, 0.04);
+  --nav-item-hover-color: rgba(60, 60, 67, 0.85);
+  --nav-item-active-bg: rgba(0, 0, 0, 0.06);
+  --nav-item-active-color: rgba(60, 60, 67, 0.9);
+  --tool-btn-bg: rgba(0, 0, 0, 0.06);
+  --tool-btn-color: rgba(60, 60, 67, 0.7);
+  --tool-btn-hover-bg: rgba(0, 0, 0, 0.1);
+  --tool-btn-hover-color: rgba(60, 60, 67, 0.9);
+  --tool-btn-active-bg: rgba(0, 0, 0, 0.08);
+  --tool-btn-active-color: rgba(60, 60, 67, 0.9);
+  --close-btn-bg: rgba(0, 0, 0, 0.05);
+  --close-btn-color: rgba(60, 60, 67, 0.6);
+  --close-btn-hover-bg: rgba(255, 59, 48, 0.12);
+  --close-btn-hover-color: #FF3B30;
+  --card-bg: rgba(255, 255, 255, 0.55);
+  --card-border: rgba(0, 0, 0, 0.04);
+  --card-hover-bg: rgba(255, 255, 255, 0.72);
+  --input-bg: rgba(0, 0, 0, 0.04);
+  --input-focus-bg: rgba(0, 0, 0, 0.02);
+  --chip-bg: rgba(0, 0, 0, 0.05);
+  --chip-hover-bg: rgba(0, 0, 0, 0.08);
+  --card-outer-bg: rgba(0, 0, 0, 0.05);
+  --card-inner-bg: rgba(255, 255, 255, 0.60);
+  --card-glow: rgba(0, 122, 255, 0.15);
+}
+
+[data-theme="deep-blue"] {
+  --bg-primary: #0A1628;
+  --bg-card: #132236;
+  --bg-card-hover: #1A2D45;
+  --text-primary: #E8EDF4;
+  --text-secondary: #8899B4;
+  --text-tertiary: #4A6080;
+  --separator: rgba(255, 255, 255, 0.08);
+  --shadow: 0 1px 3px rgba(0,0,0,0.4);
+  --glass-bg: #0D1A30;
+  --accent: #4DA3FF;
+  --accent-bg: rgba(77, 163, 255, 0.12);
+  --sidebar-bg: #0C192C;
+  --sidebar-border: rgba(255, 255, 255, 0.06);
+  --panel-bg: #101D33;
+  --panel-header-bg: #0A1628;
+  --nav-item-color: rgba(255, 255, 255, 0.4);
+  --nav-item-hover-bg: rgba(77, 163, 255, 0.08);
+  --nav-item-hover-color: rgba(255, 255, 255, 0.8);
+  --nav-item-active-bg: rgba(77, 163, 255, 0.14);
+  --nav-item-active-color: rgba(255, 255, 255, 0.9);
+  --tool-btn-bg: rgba(255, 255, 255, 0.08);
+  --tool-btn-color: rgba(255, 255, 255, 0.6);
+  --tool-btn-hover-bg: rgba(255, 255, 255, 0.14);
+  --tool-btn-hover-color: rgba(255, 255, 255, 0.9);
+  --tool-btn-active-bg: rgba(255, 255, 255, 0.12);
+  --tool-btn-active-color: rgba(255, 255, 255, 0.9);
+  --close-btn-bg: rgba(255, 255, 255, 0.06);
+  --close-btn-color: rgba(255, 255, 255, 0.5);
+  --close-btn-hover-bg: rgba(255, 59, 48, 0.15);
+  --close-btn-hover-color: #FF453A;
+  --card-bg: #162539;
+  --card-border: rgba(255, 255, 255, 0.06);
+  --card-hover-bg: #1D2F48;
+  --input-bg: #132236;
+  --input-focus-bg: #1A2D45;
+  --chip-bg: rgba(255, 255, 255, 0.08);
+  --chip-hover-bg: rgba(255, 255, 255, 0.12);
+  --card-outer-bg: #0D1A30;
+  --card-inner-bg: #132236;
+  --card-glow: rgba(77, 163, 255, 0.2);
+}
+
+[data-theme="dark"] {
+  --bg-primary: #000000;
+  --bg-card: rgba(255, 255, 255, 0.06);
+  --bg-card-hover: rgba(255, 255, 255, 0.1);
+  --text-primary: #FFFFFF;
+  --text-secondary: #A1A1A6;
+  --text-tertiary: #48484A;
+  --separator: rgba(255, 255, 255, 0.08);
+  --shadow: 0 1px 3px rgba(0,0,0,0.3);
+  --glass-bg: rgba(0, 0, 0, 0.4);
+  --sidebar-bg: rgba(30, 30, 30, 0.60);
+  --sidebar-border: rgba(255, 255, 255, 0.06);
+  --panel-bg: rgba(30, 30, 30, 0.62);
+  --panel-header-bg: transparent;
+  --nav-item-color: rgba(255, 255, 255, 0.4);
+  --nav-item-hover-bg: rgba(255, 255, 255, 0.06);
+  --nav-item-hover-color: rgba(255, 255, 255, 0.8);
+  --nav-item-active-bg: rgba(255, 255, 255, 0.1);
+  --nav-item-active-color: rgba(255, 255, 255, 0.9);
+  --tool-btn-bg: rgba(255, 255, 255, 0.08);
+  --tool-btn-color: rgba(255, 255, 255, 0.6);
+  --tool-btn-hover-bg: rgba(255, 255, 255, 0.14);
+  --tool-btn-hover-color: rgba(255, 255, 255, 0.9);
+  --tool-btn-active-bg: rgba(255, 255, 255, 0.12);
+  --tool-btn-active-color: rgba(255, 255, 255, 0.9);
+  --close-btn-bg: rgba(255, 255, 255, 0.06);
+  --close-btn-color: rgba(255, 255, 255, 0.5);
+  --close-btn-hover-bg: rgba(255, 59, 48, 0.15);
+  --close-btn-hover-color: #FF453A;
+  --card-bg: rgba(255, 255, 255, 0.05);
+  --card-border: rgba(255, 255, 255, 0.06);
+  --card-hover-bg: rgba(255, 255, 255, 0.08);
+  --input-bg: rgba(255, 255, 255, 0.06);
+  --input-focus-bg: rgba(255, 255, 255, 0.04);
+  --chip-bg: rgba(255, 255, 255, 0.08);
+  --chip-hover-bg: rgba(255, 255, 255, 0.12);
+  --card-outer-bg: rgba(255, 255, 255, 0.04);
+  --card-inner-bg: rgba(255, 255, 255, 0.05);
+  --card-glow: rgba(255, 255, 255, 0.15);
+}
+
+[data-theme="dark-solid"] {
+  --bg-primary: #1C1C1E;
+  --bg-card: #2C2C2E;
+  --bg-card-hover: #3A3A3C;
+  --text-primary: #FFFFFF;
+  --text-secondary: #A1A1A6;
+  --text-tertiary: #636366;
+  --separator: rgba(255, 255, 255, 0.1);
+  --accent: #0A84FF;
+  --accent-bg: rgba(10, 132, 255, 0.15);
+  --shadow: 0 2px 8px rgba(0,0,0,0.4);
+  --glass-bg: #1C1C1E;
+  --sidebar-bg: #1C1C1E;
+  --sidebar-border: rgba(255, 255, 255, 0.08);
+  --panel-bg: #242426;
+  --panel-header-bg: #1C1C1E;
+  --nav-item-color: rgba(255, 255, 255, 0.45);
+  --nav-item-hover-bg: rgba(255, 255, 255, 0.08);
+  --nav-item-hover-color: rgba(255, 255, 255, 0.85);
+  --nav-item-active-bg: rgba(255, 255, 255, 0.12);
+  --nav-item-active-color: #FFFFFF;
+  --tool-btn-bg: rgba(255, 255, 255, 0.1);
+  --tool-btn-color: rgba(255, 255, 255, 0.65);
+  --tool-btn-hover-bg: rgba(255, 255, 255, 0.16);
+  --tool-btn-hover-color: #FFFFFF;
+  --tool-btn-active-bg: rgba(255, 255, 255, 0.14);
+  --tool-btn-active-color: #FFFFFF;
+  --close-btn-bg: rgba(255, 255, 255, 0.08);
+  --close-btn-color: rgba(255, 255, 255, 0.55);
+  --close-btn-hover-bg: rgba(255, 69, 58, 0.2);
+  --close-btn-hover-color: #FF453A;
+  --card-bg: #2C2C2E;
+  --card-border: rgba(255, 255, 255, 0.08);
+  --card-hover-bg: #3A3A3C;
+  --input-bg: #2C2C2E;
+  --input-focus-bg: #3A3A3C;
+  --chip-bg: rgba(255, 255, 255, 0.1);
+  --chip-hover-bg: rgba(255, 255, 255, 0.15);
+  --card-outer-bg: #1C1C1E;
+  --card-inner-bg: #2C2C2E;
+  --card-glow: rgba(10, 132, 255, 0.18);
+}
+
+* {
+  margin: 0;
+  padding: 0;
+  box-sizing: border-box;
+}
+
+html, body, #root {
+  height: 100%;
+  overflow: hidden;
+  font-family: var(--font);
+  font-size: var(--text-base);
+  color: var(--text-primary);
+  background: transparent;
+  user-select: none;
+  -webkit-user-select: none;
+  -webkit-font-smoothing: antialiased;
+  -webkit-transform: translateZ(0);
+  transform: translateZ(0);
+}
+
+*::-webkit-scrollbar:horizontal {
+  display: none;
+  height: 0;
+}
+
+@keyframes fadeIn {
+  from { opacity: 0; }
+  to { opacity: 1; }
+}
+
+@keyframes cardEnter {
+  from {
+    opacity: 0;
+    transform: translateY(12px) scale(0.97);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0) scale(1);
+  }
+}
+
+@keyframes pageEnter {
+  from { opacity: 0; transform: translateY(8px); }
+  to { opacity: 1; transform: translateY(0); }
+}
+
+@keyframes spin {
+  to { transform: rotate(360deg); }
+}
+
+@keyframes shimmer {
+  0% { background-position: 200% 0; }
+  100% { background-position: -200% 0; }
+}
+
+@keyframes pulse {
+  0%, 100% { opacity: 1; }
+  50% { opacity: 0.6; }
+}
