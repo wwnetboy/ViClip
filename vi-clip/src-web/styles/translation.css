@@ -185,8 +185,8 @@
   min-width: 28px;
   height: 20px;
   border-radius: 5px;
-  background: var(--accent-bg);
-  color: var(--accent);
+  background: var(--chip-bg);
+  color: var(--text-secondary);
   font-size: 10px;
   font-weight: 700;
   font-family: var(--font-mono);
@@ -304,8 +304,8 @@
   padding: 0 8px;
   height: 28px;
   border-radius: 6px;
-  background: var(--accent-bg);
-  color: var(--accent);
+  background: var(--chip-bg);
+  color: var(--text-secondary);
   font-size: 10px;
   font-weight: var(--weight-semibold);
   font-family: var(--font-mono);

@@ -6,6 +6,7 @@ import type { ClipboardRecord } from "../../types";
 import { Icons } from "../../components/Icons";
 import { useSettingsStore } from "../../stores/settingsStore";
 import { usePhraseStore } from "../../stores/phraseStore";
+import { useToastStore } from "../../stores/toastStore";
 import { ContextMenu, type ContextMenuItem } from "../../components/ContextMenu";
 import { ImageThumb } from "./ImageThumb";
 import { formatTime, getFileName, TYPE_META } from "./utils";
@@ -19,6 +20,21 @@ interface ClipboardCardProps {
 }
 
 let previewCounter = 0;
+const MAX_PREVIEW_WINDOWS = 6;
+const openPreviews: string[] = [];
+
+async function canOpenPreview(limitMessage: string): Promise<boolean> {
+  // Remove stale entries (windows already closed by user)
+  for (let i = openPreviews.length - 1; i >= 0; i--) {
+    const w = await WebviewWindow.getByLabel(openPreviews[i]);
+    if (!w) openPreviews.splice(i, 1);
+  }
+  if (openPreviews.length >= MAX_PREVIEW_WINDOWS) {
+    useToastStore.getState().show(limitMessage);
+    return false;
+  }
+  return true;
+}
 
 function ClipboardCardInner({
   record,
@@ -47,12 +63,13 @@ function ClipboardCardInner({
     async (e: React.MouseEvent, alwaysOnTop: boolean) => {
       e.stopPropagation();
       try {
-        const base64: string = await invoke("get_image_base64", { path: record.content });
-        const token: string = await invoke("store_preview_image", { base64 });
+        if (!(await canOpenPreview(t("imagePreview.limitReached")))) return;
+
         const label = `image-preview-${++previewCounter}`;
+        const encodedPath = encodeURIComponent(record.content);
 
         new WebviewWindow(label, {
-          url: `index.html?preview=1&token=${token}`,
+          url: `index.html?preview=1&path=${encodedPath}`,
           title: "ViClip - Image Preview",
           width: 400,
           height: 300,
@@ -65,11 +82,12 @@ function ClipboardCardInner({
           focus: true,
           alwaysOnTop,
         });
+        openPreviews.push(label);
       } catch (err) {
         console.error("Failed to open image preview:", err);
       }
     },
-    [record],
+    [record, t],
   );
 
   const handleContextMenu = useCallback(
@@ -197,7 +215,7 @@ function ClipboardCardInner({
     <>
       <div
         className={`notification clipboard-card type-${record.type}`}
-        style={{ "--color": meta.color, "--enter-delay": index } as React.CSSProperties}
+        style={{ "--enter-delay": index } as React.CSSProperties}
         {...clickProps}
         onContextMenu={handleContextMenu}
       >
@@ -209,7 +227,7 @@ function ClipboardCardInner({
             </span>
             {record.type === "image" && (
               <div className="card-header-actions">
-                <button className="card-preview-btn" onClick={(e) => openPreview(e, false)} title="Preview image">
+                <button className="card-preview-btn" onClick={(e) => openPreview(e, false)} title={t("imagePreview.title")}>
                   <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
                     <path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z" />
                     <circle cx="12" cy="12" r="3" />
@@ -218,7 +236,7 @@ function ClipboardCardInner({
                 <button
                   className="card-preview-btn pin"
                   onClick={(e) => openPreview(e, true)}
-                  title="Always on top"
+                  title={t("imagePreview.pin")}
                 >
                   <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
                     <path d="M16 12V4h1a1 1 0 0 0 0-2H7a1 1 0 0 0 0 2h1v8l-2.5 3.5a1 1 0 0 0 .8 1.5h4.7v4.5a1 1 0 0 0 2 0V17h4.7a1 1 0 0 0 .8-1.5L16 12z" />
@@ -247,7 +265,7 @@ function ClipboardCardInner({
           <div className="notititle clipboard-card-footer">
             <span className="clipboard-card-time">{formatTime(record.created_at)}</span>
             <div className="clipboard-card-actions">
-              <button className="card-delete-btn" onClick={handleDelete}>
+              <button className="card-delete-btn" onClick={handleDelete} title={t("contextMenu.delete")}>
                 {Icons.delete}
               </button>
             </div>

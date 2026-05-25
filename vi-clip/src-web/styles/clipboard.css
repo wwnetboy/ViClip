@@ -9,7 +9,7 @@
 .clipboard-list {
   display: flex;
   flex-direction: column;
-  gap: 10px;
+  gap: 8px;
   overflow-y: auto;
   flex: 1;
   padding-bottom: 8px;
@@ -34,6 +34,10 @@
 }
 
 /* Clipboard Card */
+.clipboard-card {
+  margin-bottom: 8px;
+}
+
 .clipboard-card.type-text {
   --color: #007AFF;
 }
@@ -147,7 +151,7 @@
 }
 
 .clipboard-link-content {
-  color: var(--accent);
+  color: var(--text-primary);
   word-break: break-all;
   font-size: var(--text-sm);
 }
@@ -192,7 +196,7 @@
   width: 14px;
   height: 14px;
   border: 2px solid var(--separator);
-  border-top-color: var(--accent);
+  border-top-color: var(--text-secondary);
   border-radius: 50%;
   animation: spin 0.6s linear infinite;
 }

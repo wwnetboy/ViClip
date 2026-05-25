@@ -208,7 +208,8 @@
   justify-content: center;
   flex-shrink: 0;
   border-radius: 8px;
-  background: #FFFFFF;
+  background: var(--bg-card);
+  color: var(--nav-item-color);
   transition: background 0.2s ease, color 0.2s ease;
 }
 
@@ -220,17 +221,8 @@
 }
 
 .sidebar-nav-item.active .sidebar-nav-icon {
-  background: rgba(51, 51, 51, 0.85);
-  color: #fff;
-}
-
-[data-theme="dark"] .sidebar-nav-icon, [data-theme="dark-solid"] .sidebar-nav-icon, [data-theme="deep-blue"] .sidebar-nav-icon {
-  background: rgba(255, 255, 255, 0.08);
-}
-
-[data-theme="dark"] .sidebar-nav-item.active .sidebar-nav-icon, [data-theme="dark-solid"] .sidebar-nav-item.active .sidebar-nav-icon, [data-theme="deep-blue"] .sidebar-nav-item.active .sidebar-nav-icon {
-  background: rgba(255, 255, 255, 0.88);
-  color: #333;
+  background: var(--chip-hover-bg);
+  color: var(--nav-item-active-color);
 }
 
 .sidebar-nav-label {
@@ -282,19 +274,19 @@
 }
 
 .sidebar-footer-item:hover {
-  background: rgba(0, 0, 0, 0.04);
-  color: var(--text-primary);
+  background: var(--nav-item-hover-bg);
+  color: var(--nav-item-hover-color);
 }
 
 .sidebar-footer-item.active {
   background: transparent;
-  color: var(--text-primary);
+  color: var(--nav-item-active-color);
   font-weight: var(--weight-normal);
 }
 
 .sidebar-footer-item.active .sidebar-footer-icon {
-  background: rgba(51, 51, 51, 0.85);
-  color: #fff;
+  background: var(--chip-hover-bg);
+  color: var(--nav-item-active-color);
 }
 
 .sidebar-footer-item:active {
@@ -323,7 +315,8 @@
   justify-content: center;
   flex-shrink: 0;
   border-radius: 7px;
-  background: rgba(0, 0, 0, 0.05);
+  background: var(--bg-card);
+  color: var(--nav-item-color);
   transition: background 0.2s ease, color 0.2s ease;
 }
 
@@ -332,15 +325,6 @@
   height: 14px;
   stroke-width: 1.8;
   transition: color 0.2s ease;
-}
-
-[data-theme="dark"] .sidebar-footer-icon, [data-theme="dark-solid"] .sidebar-footer-icon, [data-theme="deep-blue"] .sidebar-footer-icon {
-  background: rgba(255, 255, 255, 0.08);
-}
-
-[data-theme="dark"] .sidebar-footer-item.active .sidebar-footer-icon, [data-theme="dark-solid"] .sidebar-footer-item.active .sidebar-footer-icon, [data-theme="deep-blue"] .sidebar-footer-item.active .sidebar-footer-icon {
-  background: rgba(255, 255, 255, 0.88);
-  color: #333;
 }
 
 .sidebar-footer-label {
@@ -377,20 +361,6 @@
 [data-theme="dark-solid"] .panel-area, [data-theme="deep-blue"] .panel-area {
   background: var(--panel-bg);
   color: var(--text-primary);
-}
-
-/* Mica Alt falls back to solid gray when unfocused.
-   Switch to solid dark colors to avoid a muddy gray-on-gray look. */
-[data-theme="dark"][data-window-focused="false"] .sidebar {
-  background: #1C1C1E;
-  backdrop-filter: none;
-  -webkit-backdrop-filter: none;
-}
-
-[data-theme="dark"][data-window-focused="false"] .panel-area {
-  background: #242426;
-  backdrop-filter: none;
-  -webkit-backdrop-filter: none;
 }
 
 [data-theme="dark"] .panel-area .panel-window-title, [data-theme="dark-solid"] .panel-area .panel-window-title, [data-theme="deep-blue"] .panel-area .panel-window-title {

@@ -6,7 +6,7 @@
   "tabs": {
     "clipboard": "剪切板",
     "phrases": "快捷短语",
-    "translate": "翻译"
+    "translate": "快速翻译"
   },
   "settings": {
     "title": "设置",
@@ -170,6 +170,7 @@
     "minimize": "最小化",
     "maximize": "最大化",
     "restore": "还原",
-    "close": "关闭"
+    "close": "关闭",
+    "limitReached": "已达到最大预览窗口数量（6个），请先关闭一个"
   }
 }

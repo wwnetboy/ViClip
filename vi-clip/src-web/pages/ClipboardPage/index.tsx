@@ -1,4 +1,5 @@
 import { useEffect, useCallback, useMemo } from "react";
+import { Virtuoso } from "react-virtuoso";
 import { useTranslation } from "react-i18next";
 import { useClipboardStore } from "../../stores/clipboardStore";
 import { Icons } from "../../components/Icons";
@@ -121,18 +122,21 @@ export default function ClipboardPage() {
           <span>{t("clipboard.empty")}</span>
         </div>
       ) : (
-        <div className="clipboard-list">
-          {filtered.map((r, i) => (
+        <Virtuoso
+          className="clipboard-list"
+          data={filtered}
+          computeItemKey={(_, item) => item.id}
+          itemContent={(_, record) => (
             <ClipboardCard
-              key={r.id}
-              record={r}
-              index={i}
+              key={record.id}
+              record={record}
+              index={0}
               getTypeLabel={getTypeLabel}
               onPaste={handlePaste}
               onDelete={handleDelete}
             />
-          ))}
-        </div>
+          )}
+        />
       )}
 
     </div>

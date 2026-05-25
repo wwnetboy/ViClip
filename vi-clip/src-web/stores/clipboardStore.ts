@@ -98,9 +98,11 @@ export const useClipboardStore = create<ClipboardState>((set, get) => ({
     set({ loading: true });
     try {
       const s = get().search || undefined;
+      const cat = get().category !== "all" ? get().category : undefined;
       const records = await invoke<ClipboardRecord[]>("get_clipboard_records", {
         search: s,
         limit: 2000,
+        recordType: cat,
       });
       set({ records });
     } catch (e) {

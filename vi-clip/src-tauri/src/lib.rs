@@ -7,11 +7,8 @@ mod translator;
 mod tray;
 mod updater;
 
-use std::collections::HashMap;
-use std::sync::Mutex;
 use serde::Serialize;
 use tauri::Manager;
-use uuid::Uuid;
 use tauri_plugin_autostart::ManagerExt;
 
 #[derive(Serialize)]
@@ -20,39 +17,6 @@ struct AppInfo {
     version: &'static str,
     author: &'static str,
     copyright: String,
-}
-
-struct PreviewImageStore(Mutex<HashMap<String, String>>);
-
-impl PreviewImageStore {
-    const MAX_ENTRIES: usize = 32;
-
-    fn insert(&self, token: String, base64: String) {
-        let mut map = self.0.lock().unwrap();
-        if map.len() >= Self::MAX_ENTRIES {
-            // Evict oldest entry
-            if let Some(oldest) = map.keys().next().cloned() {
-                map.remove(&oldest);
-            }
-        }
-        map.insert(token, base64);
-    }
-
-    fn remove(&self, token: &str) -> Option<String> {
-        self.0.lock().unwrap().remove(token)
-    }
-}
-
-#[tauri::command]
-fn store_preview_image(state: tauri::State<'_, PreviewImageStore>, base64: String) -> String {
-    let token = Uuid::new_v4().to_string();
-    state.insert(token.clone(), base64);
-    token
-}
-
-#[tauri::command]
-fn fetch_preview_image(state: tauri::State<'_, PreviewImageStore>, token: String) -> Option<String> {
-    state.remove(&token)
 }
 
 #[tauri::command]
@@ -149,7 +113,7 @@ const WCA_ACCENT_POLICY: i32 = 19;
 const ACCENT_ENABLE_BLURBEHIND: i32 = 3;
 
 #[cfg(target_os = "windows")]
-fn apply_backdrop_effect(window: &tauri::WebviewWindow, use_win10_fallback: bool) -> bool {
+fn apply_backdrop_effect(window: &tauri::WebviewWindow, _use_win10_fallback: bool) -> bool {
     use windows::Win32::Foundation::HWND;
     use windows::Win32::Graphics::Dwm::{
         DwmSetWindowAttribute,
@@ -175,9 +139,9 @@ fn apply_backdrop_effect(window: &tauri::WebviewWindow, use_win10_fallback: bool
     };
     let is_win11 = backdrop_result.is_ok();
 
-    if !is_win11 && use_win10_fallback {
-        apply_win10_blur_behind(hwnd);
-    }
+    // Always apply Win10 blur-behind for persistent transparency
+    // (Mica Alt loses transparency on focus loss; blur-behind stays consistent)
+    apply_win10_blur_behind(hwnd);
 
     // Rounded corners (Windows 11 only, fails silently on Windows 10)
     let corner_preference: i32 = 2; // DWMWCP_ROUND
@@ -216,7 +180,6 @@ fn apply_win10_blur_behind(hwnd: windows::Win32::Foundation::HWND) {
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
     tauri::Builder::default()
-        .manage(PreviewImageStore(Mutex::new(HashMap::new())))
         .plugin(tauri_plugin_clipboard_manager::init())
         .plugin(tauri_plugin_process::init())
         .plugin(tauri_plugin_autostart::init(tauri_plugin_autostart::MacosLauncher::LaunchAgent, Some(vec!["--hidden"])))
@@ -284,17 +247,11 @@ pub fn run() {
             }
         }
 
-        // Win11: DWM system backdrop (Mica Alt) + DWM rounded corners.
-        // Win10: ACCENT_ENABLE_BLURBEHIND only — SetWindowRgn for rounded
-        // corners conflicts with transparent window compositing on Win10,
-        // causing the window to show through to other windows behind it.
+        // Always apply blur-behind for persistent transparency across
+        // focus changes. Mica Alt is also attempted for Win11 rounded corners.
         // Rounded corners on Win10 are handled via CSS border-radius and
         // the inset box-shadow window border.
-        let is_win11 = apply_backdrop_effect(&window, false);
-        if !is_win11 {
-            use windows::Win32::Foundation::HWND;
-            apply_win10_blur_behind(HWND(window.hwnd().unwrap().0));
-        }
+        apply_backdrop_effect(&window, false);
                 }
             }
 
@@ -464,8 +421,6 @@ pub fn run() {
             tray::update_tray_language,
             preview_lock::set_preview_aspect_ratio,
             apply_preview_backdrop,
-            store_preview_image,
-            fetch_preview_image,
             open_url,
             open_file_location,
             updater::check_update,
