@@ -1,7 +1,7 @@
 {
   "$schema": "../node_modules/@tauri-apps/cli/config.schema.json",
   "productName": "ViClip",
-  "version": "1.0.4",
+  "version": "1.0.5",
   "identifier": "com.viclip.app",
   "build": {
     "frontendDist": "../dist",
@@ -10,23 +10,7 @@
     "beforeBuildCommand": "pnpm build"
   },
   "app": {
-    "windows": [
-      {
-        "title": "ViClip",
-        "width": 520,
-        "height": 600,
-        "minWidth": 440,
-        "minHeight": 420,
-        "resizable": true,
-        "fullscreen": false,
-        "decorations": false,
-        "alwaysOnTop": false,
-        "visible": false,
-        "center": true,
-        "transparent": true,
-        "shadow": false
-      }
-    ],
+    "windows": [],
     "security": {
       "csp": "default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline'; img-src 'self' asset: https://asset.localhost data: blob:; font-src 'self' data:; connect-src 'self' https: http://localhost:5173",
       "assetProtocol": {
