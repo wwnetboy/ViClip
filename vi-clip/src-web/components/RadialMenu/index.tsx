@@ -118,7 +118,7 @@ export default function RadialMenu() {
     let unlisteners: UnlistenFn[] = [];
 
     const setup = async () => {
-      const unDown = await listen<{ x: number; y: number; theme: string }>("radial-menu-down", async (e) => {
+      const unDown = await listen<{ theme: string }>("radial-menu-down", async (e) => {
         document.documentElement.setAttribute("data-theme", resolveTheme(e.payload.theme as ThemeMode));
         showTimestampRef.current = Date.now();
         setVisible(true);

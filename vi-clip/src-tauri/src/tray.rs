@@ -12,15 +12,15 @@ fn build_tray_menu(app: &AppHandle, lang: &str) -> Result<tauri::menu::Menu<taur
     let version = env!("CARGO_PKG_VERSION");
     let is_cn = !lang.starts_with("en");
 
-    let (website_text, version_text, update_text, guide_text, prefs_text, restart_text, quit_text) = if is_cn {
+    let (website_text, version_text, update_text, guide_text, feedback_text, prefs_text, quit_text) = if is_cn {
         (
             "ViClip官网",
             format!("版本 v{}", version),
             "检测更新",
             "使用指南",
+            "意见反馈",
             "偏好设置",
-            "重启",
-            "退出",
+            "退出应用",
         )
     } else {
         (
@@ -28,9 +28,9 @@ fn build_tray_menu(app: &AppHandle, lang: &str) -> Result<tauri::menu::Menu<taur
             format!("Version v{}", version),
             "Check for Updates",
             "User Guide",
+            "Feedback",
             "Preferences",
-            "Restart",
-            "Quit",
+            "Quit App",
         )
     };
 
@@ -40,10 +40,11 @@ fn build_tray_menu(app: &AppHandle, lang: &str) -> Result<tauri::menu::Menu<taur
         .build(app)?;
     let update = MenuItemBuilder::with_id("check_update", update_text).build(app)?;
     let guide = MenuItemBuilder::with_id("guide", guide_text).build(app)?;
+    let feedback = MenuItemBuilder::with_id("feedback", feedback_text).build(app)?;
     let sep1 = PredefinedMenuItem::separator(app)?;
     let sep2 = PredefinedMenuItem::separator(app)?;
+    let sep3 = PredefinedMenuItem::separator(app)?;
     let prefs = MenuItemBuilder::with_id("preferences", prefs_text).build(app)?;
-    let restart = MenuItemBuilder::with_id("restart", restart_text).build(app)?;
     let quit = MenuItemBuilder::with_id("quit", quit_text).build(app)?;
 
     MenuBuilder::new(app)
@@ -54,7 +55,8 @@ fn build_tray_menu(app: &AppHandle, lang: &str) -> Result<tauri::menu::Menu<taur
         .item(&update)
         .item(&sep2)
         .item(&guide)
-        .item(&restart)
+        .item(&feedback)
+        .item(&sep3)
         .item(&quit)
         .build()
         .map_err(Into::into)
@@ -135,19 +137,15 @@ pub fn create_tray(app: &AppHandle) -> Result<(), Box<dyn std::error::Error>> {
                 "guide" => {
                     let _ = open::that("https://github.com/wwnetboy/ViClip/wiki");
                 }
+                "feedback" => {
+                    let _ = open::that("https://github.com/wwnetboy/ViClip/issues");
+                }
                 "preferences" => {
                     if let Some(window) = app.get_webview_window("main") {
                         let _ = app.emit("navigate-panel", "settings");
                         window.show().ok();
                         window.set_focus().ok();
                     }
-                }
-                "restart" => {
-                    // Spawn a new instance and exit
-                    if let Ok(exe) = std::env::current_exe() {
-                        let _ = std::process::Command::new(exe).spawn();
-                    }
-                    app.exit(0);
                 }
                 "quit" => {
                     app.exit(0);
