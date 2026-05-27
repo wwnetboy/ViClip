@@ -350,10 +350,65 @@
   font-family: var(--font);
   font-size: var(--text-xs);
   color: var(--text-secondary);
-  white-space: pre-wrap;
   word-break: break-word;
-  line-height: 1.5;
+  line-height: 1.6;
   margin: 0;
+}
+
+.about-release-notes h2,
+.about-release-notes h3,
+.about-release-notes h4 {
+  color: var(--text-primary);
+  margin: 8px 0 4px;
+  font-weight: var(--weight-semibold);
+}
+
+.about-release-notes h2 { font-size: var(--text-md); }
+.about-release-notes h3 { font-size: var(--text-base); }
+.about-release-notes h4 { font-size: var(--text-sm); }
+
+.about-release-notes ul {
+  padding-left: 16px;
+  margin: 4px 0;
+}
+
+.about-release-notes li {
+  margin: 2px 0;
+}
+
+.about-release-notes code {
+  background: var(--chip-bg);
+  padding: 1px 4px;
+  border-radius: 3px;
+  font-family: var(--font-mono);
+  font-size: 10px;
+}
+
+.about-release-notes pre {
+  background: var(--chip-bg);
+  padding: 6px 8px;
+  border-radius: 4px;
+  overflow-x: auto;
+  margin: 4px 0;
+}
+
+.about-release-notes pre code {
+  background: none;
+  padding: 0;
+}
+
+.about-release-notes a {
+  color: var(--accent);
+  text-decoration: none;
+}
+
+.about-release-notes a:hover {
+  text-decoration: underline;
+}
+
+.about-release-notes strong {
+  font-weight: var(--weight-semibold);
+  color: var(--text-primary);
 }
 
 .about-download-btn {

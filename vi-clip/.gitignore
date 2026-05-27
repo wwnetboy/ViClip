@@ -32,6 +32,9 @@ src-tauri/target
 # Vite cache
 .vite
 
+# WiX build tools (not needed for NSIS builds)
+tools/
+
 # Windows
 Thumbs.db
 desktop.ini

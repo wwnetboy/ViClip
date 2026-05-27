@@ -1,7 +1,7 @@
 {
   "$schema": "../node_modules/@tauri-apps/cli/config.schema.json",
   "productName": "ViClip",
-  "version": "1.0.5",
+  "version": "1.0.6",
   "identifier": "com.viclip.app",
   "build": {
     "frontendDist": "../dist",
@@ -37,7 +37,8 @@
         "installMode": "currentUser",
         "installerIcon": "icons/icon.ico",
         "languages": ["SimpChinese", "English"],
-        "displayLanguageSelector": true
+        "displayLanguageSelector": true,
+        "template": "nsis/installer.nsi"
       },
       "wix": {
         "language": "zh-CN"

@@ -40,8 +40,6 @@ impl Drop for ToggleGuard {
 
 #[derive(serde::Serialize, Clone)]
 struct RadialMenuDownPayload {
-    x: i32,
-    y: i32,
     theme: String,
 }
 
@@ -125,24 +123,18 @@ unsafe extern "system" fn mouse_hook_callback(
                             let sx = hook_struct.pt.x;
                             let sy = hook_struct.pt.y;
 
-                            let scale = window.scale_factor().unwrap_or(1.0);
-                            let half_w = (150.0 * scale) as i32;
-                            let top_off = (30.0 * scale) as i32;
-
-                            let css_x = ((half_w as f64) / scale).round() as i32;
-                            let css_y = ((top_off as f64) / scale).round() as i32;
-
+                            // Position window at mouse bottom-right (like Windows context menu)
                             let _ = window.set_position(tauri::Position::Physical(
-                                tauri::PhysicalPosition::new(sx - half_w, sy - top_off),
+                                tauri::PhysicalPosition::new(sx, sy),
                             ));
 
                             let theme = crate::db::get_setting(app.clone(), "theme".to_string())
                                 .unwrap_or_else(|_| "light".to_string());
 
-                            log::info!("radial-menu-down: screen=({}, {}), css=({}, {}), theme={}", sx, sy, css_x, css_y, theme);
+                            log::info!("radial-menu-down: screen=({}, {}), theme={}", sx, sy, theme);
                             let _ = app.emit(
                                 "radial-menu-down",
-                                RadialMenuDownPayload { x: css_x, y: css_y, theme },
+                                RadialMenuDownPayload { theme },
                             );
 
                             RADIAL_JUST_SHOWN.store(true, Ordering::SeqCst);
