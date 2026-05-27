@@ -108,7 +108,16 @@
     "targetLang": "Target Language",
     "noResult": "Translation result will appear here",
     "copy": "Copy",
-    "copied": "Copied"
+    "copied": "Copied",
+    "retry": "Retry",
+    "errors": {
+      "network": "Unable to connect to the translation service. Please check your network, configure a proxy, or switch to AI translation in Settings.",
+      "timeout": "Translation request timed out. The free API may be unstable. Please retry, or switch to AI translation in Settings.",
+      "http": "The translation service is temporarily unavailable. Please retry later, configure a proxy, or switch to AI translation in Settings.",
+      "parse": "The translation service returned an unexpected response. Please retry or switch to AI translation in Settings.",
+      "config": "Translation is not configured. Please fill in the API URL and Key in Settings.",
+      "generic": "Translation failed. Please retry or switch to an alternative engine in Settings."
+    }
   },
   "clipboard": {
     "search": "Search clipboard...",

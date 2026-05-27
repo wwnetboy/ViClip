@@ -229,8 +229,8 @@
 
 .translation-error {
   display: flex;
-  align-items: flex-start;
-  gap: 8px;
+  flex-direction: column;
+  gap: 6px;
   padding: 8px 12px;
   border-radius: 10px;
   background: rgba(255, 59, 48, 0.08);
@@ -241,6 +241,12 @@
   word-break: break-word;
   overflow-wrap: break-word;
   line-height: 1.4;
+}
+
+.translation-error-top {
+  display: flex;
+  align-items: flex-start;
+  gap: 8px;
 }
 
 .error-icon-svg {
@@ -258,11 +264,36 @@
 }
 
 .translation-error-text {
+  flex: 1;
   min-width: 0;
   overflow: hidden;
   display: -webkit-box;
   -webkit-line-clamp: 2;
   -webkit-box-orient: vertical;
+}
+
+.translation-retry-btn {
+  flex-shrink: 0;
+  width: 28px;
+  height: 28px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  border: none;
+  border-radius: 6px;
+  background: rgba(255, 59, 48, 0.12);
+  color: #FF3B30;
+  cursor: pointer;
+  transition: background 0.15s;
+}
+
+.translation-retry-btn:hover {
+  background: rgba(255, 59, 48, 0.22);
+}
+
+.translation-retry-btn svg {
+  width: 14px;
+  height: 14px;
 }
 
 .translation-result-card {
