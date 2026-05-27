@@ -186,6 +186,8 @@
   --card-outer-bg: rgba(255, 255, 255, 0.04);
   --card-inner-bg: rgba(255, 255, 255, 0.05);
   --card-glow: rgba(255, 255, 255, 0.15);
+  --accent: #BF5AF2;
+  --accent-bg: rgba(191, 90, 242, 0.15);
 }
 
 [data-theme="dark-solid"] {
@@ -197,8 +199,8 @@
   --text-tertiary: #636366;
   --separator: rgba(255, 255, 255, 0.1);
   --window-border: rgba(255, 255, 255, 0.06);
-  --accent: #0A84FF;
-  --accent-bg: rgba(10, 132, 255, 0.15);
+  --accent: #FF9F0A;
+  --accent-bg: rgba(255, 159, 10, 0.15);
   --shadow: 0 2px 8px rgba(0,0,0,0.4);
   --glass-bg: #1C1C1E;
   --sidebar-bg: #1C1C1E;

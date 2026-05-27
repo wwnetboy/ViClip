@@ -50,8 +50,8 @@ impl Drop for PasteGuard {
 pub fn cache_image(path: String, rgba: Vec<u8>, width: u32, height: u32, png_bytes: Vec<u8>) {
     let mut cache = get_image_cache().lock().unwrap();
     // Evict oldest entries (deterministic insertion order)
-    if cache.map.len() >= 30 {
-        let evict_count = 15.min(cache.order.len());
+    if cache.map.len() >= 10 {
+        let evict_count = 5.min(cache.order.len());
         let evicted: Vec<String> = cache.order.drain(..evict_count).collect();
         for k in &evicted {
             cache.map.remove(k);

@@ -35,6 +35,7 @@ ViClip is a lightweight desktop productivity suite that appears as a floating wi
 - Content hash deduplication with intelligent duplicate filtering
 - Keyword search and type filtering
 - Single-click / double-click to paste at cursor position (configurable)
+- Right-click context menu: copy content, delete records
 - Configurable retention period (1 day / 1 week / 1 month / 3 months / forever) with auto cleanup
 - Image thumbnail preview with hover action buttons
 
@@ -68,13 +69,14 @@ ViClip is a lightweight desktop productivity suite that appears as a floating wi
 
 ### System Features
 
-- **Global Hotkey**: Customizable keyboard shortcut to summon the main window, supports Win key combos
+- **Global Hotkey**: Customizable keyboard shortcut to summon the main window, supports Win key combos and Win+V shortcut
 - **Mouse Gesture**: `Ctrl + Shift + Right Click` to toggle main window visibility
 - **System Tray**: Left-click toggles window, right-click opens menu
-- **Four Themes**: Light / Dark / Dark Blue / Dark Solid
-- **Auto-start**: Silent startup with `--hidden` flag, minimizes to tray on boot
+- **Five Themes**: Light / Dark Solid / Deep Blue / Dark Translucent / Follow System
+- **Auto-start**: Enabled by default, silent startup with `--hidden` flag, minimizes to tray on boot
 - **Minimize to Tray**: Closing the window hides to tray instead of exiting
 - **Paste Notification**: Toast popup at bottom-right corner on successful paste (toggleable)
+- **In-app Updates**: Built-in update detection with one-click download and install
 - **Storage Migration**: Move database and image files to a custom directory
 
 ## Tech Stack
@@ -96,8 +98,8 @@ Go to the [Releases](https://github.com/wwnetboy/ViClip/releases) page to downlo
 
 | Package | Description |
 |:---|:---|
-| `ViClip_x64-setup.exe` | NSIS Installer |
-| `ViClip_x64_zh-CN.msi` | MSI Installer (Chinese) |
+| `ViClip_x.x.x_x64-setup.exe` | NSIS Installer |
+| `ViClip_x.x.x_x64_zh-CN.msi` | MSI Installer (Chinese) |
 
 **System Requirements**: Windows 10+
 
@@ -130,15 +132,15 @@ Right-click the system tray icon:
 - **Preferences** — Open settings panel
 - **ViClip Website** — Open project homepage
 - **Version** — Show current version
-- **Check for Updates** — Open Releases page
+- **Check for Updates** — Check and download new version
 - **User Guide** — Open Wiki documentation
 - **Restart** — Restart the application
 - **Exit** — Completely exit
 
 ### Personalization Settings
 
-- **Hotkey**: Customize the global summon hotkey
-- **Theme**: Light / Dark / Dark Blue / Dark Solid
+- **Hotkey**: Customize the global summon hotkey, supports Win+V
+- **Theme**: Light / Dark Solid / Deep Blue / Dark Translucent / Follow System
 - **Click Mode**: Single-click paste / Double-click paste
 - **Auto-start**: Launch on system boot and minimize to tray
 - **Minimize to Tray**: Hide to tray instead of exiting when closing the window

@@ -7,11 +7,8 @@ mod translator;
 mod tray;
 mod updater;
 
-use std::collections::HashMap;
-use std::sync::Mutex;
 use serde::Serialize;
 use tauri::Manager;
-use uuid::Uuid;
 use tauri_plugin_autostart::ManagerExt;
 
 #[derive(Serialize)]
@@ -20,39 +17,6 @@ struct AppInfo {
     version: &'static str,
     author: &'static str,
     copyright: String,
-}
-
-struct PreviewImageStore(Mutex<HashMap<String, String>>);
-
-impl PreviewImageStore {
-    const MAX_ENTRIES: usize = 32;
-
-    fn insert(&self, token: String, base64: String) {
-        let mut map = self.0.lock().unwrap();
-        if map.len() >= Self::MAX_ENTRIES {
-            // Evict oldest entry
-            if let Some(oldest) = map.keys().next().cloned() {
-                map.remove(&oldest);
-            }
-        }
-        map.insert(token, base64);
-    }
-
-    fn remove(&self, token: &str) -> Option<String> {
-        self.0.lock().unwrap().remove(token)
-    }
-}
-
-#[tauri::command]
-fn store_preview_image(state: tauri::State<'_, PreviewImageStore>, base64: String) -> String {
-    let token = Uuid::new_v4().to_string();
-    state.insert(token.clone(), base64);
-    token
-}
-
-#[tauri::command]
-fn fetch_preview_image(state: tauri::State<'_, PreviewImageStore>, token: String) -> Option<String> {
-    state.remove(&token)
 }
 
 #[tauri::command]
@@ -149,7 +113,7 @@ const WCA_ACCENT_POLICY: i32 = 19;
 const ACCENT_ENABLE_BLURBEHIND: i32 = 3;
 
 #[cfg(target_os = "windows")]
-fn apply_backdrop_effect(window: &tauri::WebviewWindow, use_win10_fallback: bool) -> bool {
+fn apply_backdrop_effect(window: &tauri::WebviewWindow, _use_win10_fallback: bool) -> bool {
     use windows::Win32::Foundation::HWND;
     use windows::Win32::Graphics::Dwm::{
         DwmSetWindowAttribute,
@@ -175,9 +139,9 @@ fn apply_backdrop_effect(window: &tauri::WebviewWindow, use_win10_fallback: bool
     };
     let is_win11 = backdrop_result.is_ok();
 
-    if !is_win11 && use_win10_fallback {
-        apply_win10_blur_behind(hwnd);
-    }
+    // Always apply Win10 blur-behind for persistent transparency
+    // (Mica Alt loses transparency on focus loss; blur-behind stays consistent)
+    apply_win10_blur_behind(hwnd);
 
     // Rounded corners (Windows 11 only, fails silently on Windows 10)
     let corner_preference: i32 = 2; // DWMWCP_ROUND
@@ -216,7 +180,6 @@ fn apply_win10_blur_behind(hwnd: windows::Win32::Foundation::HWND) {
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
     tauri::Builder::default()
-        .manage(PreviewImageStore(Mutex::new(HashMap::new())))
         .plugin(tauri_plugin_clipboard_manager::init())
         .plugin(tauri_plugin_process::init())
         .plugin(tauri_plugin_autostart::init(tauri_plugin_autostart::MacosLauncher::LaunchAgent, Some(vec!["--hidden"])))
@@ -231,6 +194,14 @@ pub fn run() {
         )
         .plugin(tauri_plugin_dialog::init())
         .setup(|app| {
+            let is_autostart = std::env::args().any(|a| a == "--hidden");
+
+            // On auto-start (cold boot), delay to give WebView2 time to
+            // initialize before creating any windows.
+            if is_autostart {
+                std::thread::sleep(std::time::Duration::from_secs(3));
+            }
+
             if cfg!(debug_assertions) {
                 app.handle().plugin(
                     tauri_plugin_log::Builder::default()
@@ -239,10 +210,82 @@ pub fn run() {
                 )?;
             }
 
+            // Create main window programmatically (not from config) so it
+            // is created AFTER asset protocol setup, avoiding a cold-boot
+            // race where WebView2 navigates before the protocol is ready.
+            let main_window = {
+                use std::sync::atomic::{AtomicBool, AtomicUsize, Ordering};
+                use std::sync::Arc;
+                use tauri::WebviewWindowBuilder;
+                use tauri::WebviewUrl;
+
+                const MAX_RETRIES: usize = 3;
+                let retry_count = Arc::new(AtomicUsize::new(0));
+                let page_loaded = Arc::new(AtomicBool::new(false));
+                let retry_for_handler = retry_count.clone();
+                let loaded_for_handler = page_loaded.clone();
+                let retry_for_timeout = retry_count.clone();
+                let loaded_for_timeout = page_loaded.clone();
+
+                let main = WebviewWindowBuilder::new(
+                    app,
+                    "main",
+                    WebviewUrl::App("index.html".into()),
+                )
+                .title("ViClip")
+                .inner_size(520.0, 600.0)
+                .min_inner_size(440.0, 420.0)
+                .decorations(false)
+                .transparent(true)
+                .visible(false)
+                .center()
+                .shadow(false)
+                .resizable(true)
+                .on_page_load(move |window, payload| {
+                    use tauri::webview::PageLoadEvent;
+                    if let PageLoadEvent::Finished = payload.event() {
+                        let url = payload.url().to_string();
+                        if url.starts_with("chrome-error://") {
+                            let attempt = retry_for_handler.fetch_add(1, Ordering::SeqCst);
+                            if attempt < MAX_RETRIES {
+                                log::warn!("Main window error page (attempt {}/{}); retrying after delay...", attempt + 1, MAX_RETRIES);
+                                let w = window.clone();
+                                std::thread::spawn(move || {
+                                    std::thread::sleep(std::time::Duration::from_secs(2));
+                                    let _ = w.reload();
+                                });
+                            } else {
+                                log::error!("Main window failed to load after {} retries; giving up", MAX_RETRIES);
+                            }
+                        } else {
+                            loaded_for_handler.store(true, Ordering::SeqCst);
+                        }
+                    }
+                })
+                .build()?;
+
+                // Timeout watchdog: if page hasn't loaded within 10s, trigger reload
+                let w = main.clone();
+                std::thread::spawn(move || {
+                    std::thread::sleep(std::time::Duration::from_secs(10));
+                    if !loaded_for_timeout.load(Ordering::SeqCst) {
+                        let attempt = retry_for_timeout.fetch_add(1, Ordering::SeqCst);
+                        if attempt < MAX_RETRIES {
+                            log::warn!("Main window load timed out (attempt {}/{}); reloading...", attempt + 1, MAX_RETRIES);
+                            let _ = w.reload();
+                        } else {
+                            log::error!("Main window load timed out after {} retries; giving up", MAX_RETRIES);
+                        }
+                    }
+                });
+
+                main
+            };
+
             #[cfg(target_os = "windows")]
             {
-                if let Some(window) = app.get_webview_window("main") {
-                    let _ = window.set_background_color(Some(tauri::window::Color(0, 0, 0, 0)));
+                let window = &main_window;
+                let _ = window.set_background_color(Some(tauri::window::Color(0, 0, 0, 0)));
 
         // Remove window border styles that create a 1px line on Win10.
         // These styles are added by Tauri for resizable undecorated windows.
@@ -284,21 +327,12 @@ pub fn run() {
             }
         }
 
-        // Win11: DWM system backdrop (Mica Alt) + DWM rounded corners.
-        // Win10: ACCENT_ENABLE_BLURBEHIND only — SetWindowRgn for rounded
-        // corners conflicts with transparent window compositing on Win10,
-        // causing the window to show through to other windows behind it.
+        // Always apply blur-behind for persistent transparency across
+        // focus changes. Mica Alt is also attempted for Win11 rounded corners.
         // Rounded corners on Win10 are handled via CSS border-radius and
         // the inset box-shadow window border.
-        let is_win11 = apply_backdrop_effect(&window, false);
-        if !is_win11 {
-            use windows::Win32::Foundation::HWND;
-            apply_win10_blur_behind(HWND(window.hwnd().unwrap().0));
-        }
-                }
+        apply_backdrop_effect(window, false);
             }
-
-            let is_autostart = std::env::args().any(|a| a == "--hidden");
 
             db::init_db(app.handle())?;
             db::prune_old_records(app.handle()).ok();
@@ -334,8 +368,19 @@ pub fn run() {
 
             // Create hidden radial menu popup window
             {
+                use std::sync::atomic::{AtomicBool, AtomicUsize, Ordering};
+                use std::sync::Arc;
                 use tauri::WebviewWindowBuilder;
                 use tauri::WebviewUrl;
+
+                const MAX_RETRIES: usize = 3;
+                let retry_count = Arc::new(AtomicUsize::new(0));
+                let page_loaded = Arc::new(AtomicBool::new(false));
+                let retry_for_handler = retry_count.clone();
+                let loaded_for_handler = page_loaded.clone();
+                let retry_for_timeout = retry_count.clone();
+                let loaded_for_timeout = page_loaded.clone();
+
                 let radial = WebviewWindowBuilder::new(
                     app,
                     "radial-menu",
@@ -350,17 +395,66 @@ pub fn run() {
                 .shadow(false)
                 .skip_taskbar(true)
                 .resizable(false)
+                .on_page_load(move |window, payload| {
+                    use tauri::webview::PageLoadEvent;
+                    if let PageLoadEvent::Finished = payload.event() {
+                        let url = payload.url().to_string();
+                        if url.starts_with("chrome-error://") {
+                            let attempt = retry_for_handler.fetch_add(1, Ordering::SeqCst);
+                            if attempt < MAX_RETRIES {
+                                log::warn!("Radial window error page (attempt {}/{}); retrying after delay...", attempt + 1, MAX_RETRIES);
+                                let w = window.clone();
+                                std::thread::spawn(move || {
+                                    std::thread::sleep(std::time::Duration::from_secs(2));
+                                    let _ = w.reload();
+                                });
+                            } else {
+                                log::error!("Radial window failed to load after {} retries; giving up", MAX_RETRIES);
+                            }
+                        } else {
+                            loaded_for_handler.store(true, Ordering::SeqCst);
+                        }
+                    }
+                })
                 .build()?;
+
                 let _ = radial.set_background_color(Some(tauri::window::Color(0, 0, 0, 0)));
                 #[cfg(target_os = "windows")]
                 apply_backdrop_effect(&radial, true);
+
+                // Timeout watchdog
+                let w = radial.clone();
+                std::thread::spawn(move || {
+                    std::thread::sleep(std::time::Duration::from_secs(10));
+                    if !loaded_for_timeout.load(Ordering::SeqCst) {
+                        let attempt = retry_for_timeout.fetch_add(1, Ordering::SeqCst);
+                        if attempt < MAX_RETRIES {
+                            log::warn!("Radial window load timed out (attempt {}/{}); reloading...", attempt + 1, MAX_RETRIES);
+                            let _ = w.reload();
+                        } else {
+                            log::error!("Radial window load timed out after {} retries; giving up", MAX_RETRIES);
+                        }
+                    }
+                });
+
                 log::info!("Radial menu popup window created");
             }
 
             // Create toast notification window (bottom-right, always-on-top, transparent)
             {
+                use std::sync::atomic::{AtomicBool, AtomicUsize, Ordering};
+                use std::sync::Arc;
                 use tauri::WebviewWindowBuilder;
                 use tauri::WebviewUrl;
+
+                const MAX_RETRIES: usize = 3;
+                let retry_count = Arc::new(AtomicUsize::new(0));
+                let page_loaded = Arc::new(AtomicBool::new(false));
+                let retry_for_handler = retry_count.clone();
+                let loaded_for_handler = page_loaded.clone();
+                let retry_for_timeout = retry_count.clone();
+                let loaded_for_timeout = page_loaded.clone();
+
                 let toast = WebviewWindowBuilder::new(
                     app,
                     "toast",
@@ -376,9 +470,46 @@ pub fn run() {
                 .skip_taskbar(true)
                 .resizable(false)
                 .focused(false)
+                .on_page_load(move |window, payload| {
+                    use tauri::webview::PageLoadEvent;
+                    if let PageLoadEvent::Finished = payload.event() {
+                        let url = payload.url().to_string();
+                        if url.starts_with("chrome-error://") {
+                            let attempt = retry_for_handler.fetch_add(1, Ordering::SeqCst);
+                            if attempt < MAX_RETRIES {
+                                log::warn!("Toast window error page (attempt {}/{}); retrying after delay...", attempt + 1, MAX_RETRIES);
+                                let w = window.clone();
+                                std::thread::spawn(move || {
+                                    std::thread::sleep(std::time::Duration::from_secs(2));
+                                    let _ = w.reload();
+                                });
+                            } else {
+                                log::error!("Toast window failed to load after {} retries; giving up", MAX_RETRIES);
+                            }
+                        } else {
+                            loaded_for_handler.store(true, Ordering::SeqCst);
+                        }
+                    }
+                })
                 .build()?;
+
                 let _ = toast.set_background_color(Some(tauri::window::Color(0, 0, 0, 0)));
                 let _ = toast.set_ignore_cursor_events(true);
+
+                // Timeout watchdog
+                let w = toast.clone();
+                std::thread::spawn(move || {
+                    std::thread::sleep(std::time::Duration::from_secs(10));
+                    if !loaded_for_timeout.load(Ordering::SeqCst) {
+                        let attempt = retry_for_timeout.fetch_add(1, Ordering::SeqCst);
+                        if attempt < MAX_RETRIES {
+                            log::warn!("Toast window load timed out (attempt {}/{}); reloading...", attempt + 1, MAX_RETRIES);
+                            let _ = w.reload();
+                        } else {
+                            log::error!("Toast window load timed out after {} retries; giving up", MAX_RETRIES);
+                        }
+                    }
+                });
 
                 // Position at bottom-right of primary monitor, above the taskbar
                 #[cfg(target_os = "windows")]
@@ -422,10 +553,8 @@ pub fn run() {
                     .map(|v| v == "1")
                     .unwrap_or(false);
                 if !minimize_to_tray {
-                    if let Some(window) = app.get_webview_window("main") {
-                        let _ = window.show();
-                        let _ = window.set_focus();
-                    }
+                    let _ = main_window.show();
+                    let _ = main_window.set_focus();
                 }
             }
 
@@ -464,8 +593,6 @@ pub fn run() {
             tray::update_tray_language,
             preview_lock::set_preview_aspect_ratio,
             apply_preview_backdrop,
-            store_preview_image,
-            fetch_preview_image,
             open_url,
             open_file_location,
             updater::check_update,

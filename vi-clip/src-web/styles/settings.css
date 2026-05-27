@@ -253,7 +253,7 @@
   padding: 0;
   border: none;
   background: transparent;
-  color: var(--accent);
+  color: var(--text-secondary);
   font-family: var(--font);
   font-size: var(--text-xs);
   cursor: pointer;
@@ -288,8 +288,8 @@
   padding: 7px 18px;
   border-radius: 8px;
   border: none;
-  background: var(--accent);
-  color: #fff;
+  background: var(--nav-item-active-bg);
+  color: var(--text-primary);
   font-family: var(--font);
   font-size: var(--text-sm);
   font-weight: var(--weight-medium);
@@ -321,7 +321,7 @@
 }
 
 .about-status.downloading {
-  color: var(--accent);
+  color: var(--text-secondary);
   animation: pulse 0.8s ease-in-out infinite;
 }
 

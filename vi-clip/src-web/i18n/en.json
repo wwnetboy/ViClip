@@ -6,7 +6,7 @@
   "tabs": {
     "clipboard": "Clipboard",
     "phrases": "Quick Phrases",
-    "translate": "Translate"
+    "translate": "Quick Translate"
   },
   "settings": {
     "title": "Settings",
@@ -170,6 +170,7 @@
     "minimize": "Minimize",
     "maximize": "Maximize",
     "restore": "Restore",
-    "close": "Close"
+    "close": "Close",
+    "limitReached": "Maximum preview windows reached (6). Please close one first."
   }
 }

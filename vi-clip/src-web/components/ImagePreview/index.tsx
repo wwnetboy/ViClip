@@ -126,12 +126,12 @@ export default function ImagePreview() {
     };
   }, []);
 
-  // Load image data from the Rust store using token from URL
+  // Load image directly via file path, avoiding base64 IPC round-trip
   useEffect(() => {
     const params = new URLSearchParams(window.location.search);
-    const token = params.get("token");
-    if (token) {
-      invoke<string | null>("fetch_preview_image", { token })
+    const imagePath = params.get("path");
+    if (imagePath) {
+      invoke<string>("get_image_base64", { path: imagePath })
         .then((base64) => {
           if (base64) {
             setImageSrc(`data:image/png;base64,${base64}`);

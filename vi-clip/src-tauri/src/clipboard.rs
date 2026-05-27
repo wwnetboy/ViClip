@@ -490,10 +490,11 @@ fn save_monitor_image(
 
     log::info!("clipboard: recorded image {}x{} hash={}", img_w, img_h, content_hash_str);
 
-    crate::paste::cache_image(relative.clone(), rgba_vec, img_w, img_h, png_bytes.clone());
+    crate::paste::cache_image(relative.clone(), rgba_vec.clone(), img_w, img_h, png_bytes.clone());
 
-    if let Ok(decoded) = image::load_from_memory(&png_bytes) {
-        save_thumbnail(&dir, &filename, &decoded);
+    // Generate thumbnail directly from RGBA buffer, avoids PNG encode→decode round-trip
+    if let Some(rgba_img) = image::ImageBuffer::<image::Rgba<u8>, _>::from_raw(img_w, img_h, rgba_vec) {
+        save_thumbnail(&dir, &filename, &image::DynamicImage::ImageRgba8(rgba_img));
     }
 
     insert_and_emit(handle, "image", &relative);

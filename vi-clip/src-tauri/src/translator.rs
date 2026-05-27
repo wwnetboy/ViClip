@@ -1,5 +1,5 @@
 use serde::{Deserialize, Serialize};
-use std::sync::OnceLock;
+use std::sync::{Mutex, OnceLock};
 use tauri::Manager;
 
 fn http_client() -> &'static reqwest::Client {
@@ -10,6 +10,44 @@ fn http_client() -> &'static reqwest::Client {
             .build()
             .expect("failed to create HTTP client")
     })
+}
+
+/// Cached proxy HTTP client keyed by proxy URL string.
+/// Cleared when proxy setting changes so the next request rebuilds.
+static PROXY_CLIENT: OnceLock<Mutex<Option<(String, reqwest::Client)>>> = OnceLock::new();
+
+fn proxy_client_cache() -> &'static Mutex<Option<(String, reqwest::Client)>> {
+    PROXY_CLIENT.get_or_init(|| Mutex::new(None))
+}
+
+fn get_proxy_client(proxy_url: &str) -> Result<reqwest::Client, String> {
+    if proxy_url.is_empty() {
+        return Ok(http_client().clone());
+    }
+    let mut cache = proxy_client_cache().lock().map_err(|e| e.to_string())?;
+    if let Some((url, client)) = cache.as_ref() {
+        if url == proxy_url {
+            return Ok(client.clone());
+        }
+    }
+    let proxy = reqwest::Proxy::all(proxy_url)
+        .map_err(|e| format!("Invalid proxy config ({}): {}", proxy_url, e))?;
+    let client = reqwest::Client::builder()
+        .timeout(std::time::Duration::from_secs(15))
+        .proxy(proxy)
+        .build()
+        .map_err(|e| format!("Failed to create proxy HTTP client: {}", e))?;
+    *cache = Some((proxy_url.to_string(), client.clone()));
+    Ok(client)
+}
+
+/// Invalidate the cached proxy client — call when proxy setting changes.
+pub fn invalidate_proxy_client() {
+    if let Some(cache) = PROXY_CLIENT.get() {
+        if let Ok(mut c) = cache.lock() {
+            *c = None;
+        }
+    }
 }
 
 #[derive(Debug, Serialize, Deserialize)]
@@ -29,17 +67,12 @@ pub async fn translate(
 
     let state = app.state::<crate::db::DbState>();
 
-    // Read engine setting and check cache in a single lock acquisition
-    let engine: String;
+    // Read engine setting from cache, check translation history in DB
+    let engine = crate::db::get_setting_sync(&app, "default_translate_engine")
+        .unwrap_or_else(|| "google".to_string());
+
     {
         let conn = state.conn.lock().map_err(|e| e.to_string())?;
-        engine = conn.query_row(
-            "SELECT value FROM settings WHERE key = 'default_translate_engine'",
-            [],
-            |row| row.get::<_, String>(0),
-        )
-        .unwrap_or_else(|_| "google".to_string());
-
         let cached: Option<String> = conn
             .query_row(
                 "SELECT target_text FROM translation_history WHERE source_text = ?1 AND target_lang = ?2 AND engine = ?3 ORDER BY created_at DESC LIMIT 1",
@@ -84,20 +117,9 @@ async fn translate_ai(
     source_lang: &str,
     target_lang: &str,
 ) -> Result<TranslateResponse, String> {
-    let state = app.state::<crate::db::DbState>();
-    let (api_url, api_key, model) = {
-        let conn = state.conn.lock().map_err(|e| e.to_string())?;
-        let url: String = conn.query_row(
-            "SELECT value FROM settings WHERE key = 'ai_api_url'", [], |r| r.get(0),
-        ).unwrap_or_default();
-        let key: String = conn.query_row(
-            "SELECT value FROM settings WHERE key = 'ai_api_key'", [], |r| r.get(0),
-        ).unwrap_or_default();
-        let m: String = conn.query_row(
-            "SELECT value FROM settings WHERE key = 'ai_model'", [], |r| r.get(0),
-        ).unwrap_or_else(|_| "gpt-4o-mini".to_string());
-        (url, key, m)
-    };
+    let api_url = crate::db::get_setting_sync(app, "ai_api_url").unwrap_or_default();
+    let api_key = crate::db::get_setting_sync(app, "ai_api_key").unwrap_or_default();
+    let model = crate::db::get_setting_sync(app, "ai_model").unwrap_or_else(|| "gpt-4o-mini".to_string());
 
     if api_url.is_empty() || api_key.is_empty() {
         return Err("AI translation not configured. Please fill in the API URL and Key in settings".to_string());
@@ -160,29 +182,10 @@ async fn translate_google(
     _source_lang: &str,
     target_lang: &str,
 ) -> Result<TranslateResponse, String> {
-    let state = app.state::<crate::db::DbState>();
-    let (api_key, proxy_url): (String, String) = {
-        let conn = state.conn.lock().map_err(|e| e.to_string())?;
-        let key: String = conn.query_row(
-            "SELECT value FROM settings WHERE key = 'google_api_key'", [], |r| r.get(0),
-        ).unwrap_or_default();
-        let proxy: String = conn.query_row(
-            "SELECT value FROM settings WHERE key = 'translate_proxy'", [], |r| r.get(0),
-        ).unwrap_or_default();
-        (key, proxy)
-    };
+    let api_key = crate::db::get_setting_sync(app, "google_api_key").unwrap_or_default();
+    let proxy_url = crate::db::get_setting_sync(app, "translate_proxy").unwrap_or_default();
 
-    let client = if !proxy_url.is_empty() {
-        let proxy = reqwest::Proxy::all(&proxy_url)
-            .map_err(|e| format!("Invalid proxy config ({}): {}", proxy_url, e))?;
-        reqwest::Client::builder()
-            .timeout(std::time::Duration::from_secs(15))
-            .proxy(proxy)
-            .build()
-            .map_err(|e| format!("Failed to create proxy HTTP client: {}", e))?
-    } else {
-        http_client().clone()
-    };
+    let client = get_proxy_client(&proxy_url)?;
 
     if api_key.is_empty() {
         let resp = client

@@ -103,6 +103,7 @@ function PhraseCard({
                   e.stopPropagation();
                   onEdit(phrase);
                 }}
+                title={t("contextMenu.edit")}
               >
                 {Icons.edit}
               </button>
@@ -112,6 +113,7 @@ function PhraseCard({
                   e.stopPropagation();
                   onDelete(phrase.id);
                 }}
+                title={t("contextMenu.delete")}
               >
                 {Icons.delete}
               </button>

@@ -119,15 +119,26 @@ export default function RadialMenu() {
 
     const setup = async () => {
       const unDown = await listen<{ x: number; y: number; theme: string }>("radial-menu-down", async (e) => {
-        // Reload settings each time before showing, since the main window
-        // and radial menu have separate zustand store instances.
-        await useSettingsStore.getState().loadSettings();
         document.documentElement.setAttribute("data-theme", resolveTheme(e.payload.theme as ThemeMode));
         showTimestampRef.current = Date.now();
         setVisible(true);
       });
 
-      unlisteners = [unDown];
+      // Sync settings from main window via event bus, avoiding per-show IPC
+      const unSettings = await listen<Record<string, string>>("settings-changed", (e) => {
+        const s = e.payload;
+        useSettingsStore.setState((state) => ({
+          ...state,
+          ...(s.theme !== undefined ? { themeMode: s.theme as ThemeMode } : {}),
+          ...(s.language !== undefined ? { language: s.language } : {}),
+          ...(s.shortcut_key !== undefined ? { shortcutKey: s.shortcut_key } : {}),
+          ...(s.click_mode !== undefined ? { clickMode: s.click_mode } : {}),
+          ...(s.radial_menu_enabled !== undefined ? { radialMenuEnabled: s.radial_menu_enabled !== "0" } : {}),
+          ...(s.toast_enabled !== undefined ? { toastEnabled: s.toast_enabled !== "0" } : {}),
+        }));
+      });
+
+      unlisteners = [unDown, unSettings];
     };
 
     setup();

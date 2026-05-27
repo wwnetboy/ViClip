@@ -141,7 +141,7 @@ function App() {
         data-tauri-drag-region
       >
         <div className="sidebar-header" data-tauri-drag-region>
-          <img className="sidebar-logo" src="/vi.png" alt="logo" />
+          <img className="sidebar-logo" src="/logo.png" alt="logo" />
           <span className="sidebar-brand">{t("brand.name")}</span>
         </div>
 

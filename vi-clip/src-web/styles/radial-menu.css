@@ -204,7 +204,7 @@
 }
 
 .radial-menu-item.selected {
-  background: var(--accent-bg);
+  background: var(--nav-item-hover-bg);
   transform: scale(1.01);
 }
 

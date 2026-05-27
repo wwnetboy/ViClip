@@ -2,10 +2,68 @@ use rusqlite::{Connection, params};
 use tauri::{AppHandle, Emitter, Manager};
 use std::path::PathBuf;
 use std::sync::Mutex;
-use std::collections::HashSet;
+use std::collections::{HashMap, HashSet};
 
 pub struct DbState {
     pub conn: Mutex<Connection>,
+}
+
+// In-memory settings cache: loaded once from DB, updated on every write.
+// Reduces DB lock contention for high-frequency reads (translator, paste, etc.).
+static SETTINGS_CACHE: std::sync::OnceLock<Mutex<HashMap<String, String>>> = std::sync::OnceLock::new();
+
+fn settings_cache() -> &'static Mutex<HashMap<String, String>> {
+    SETTINGS_CACHE.get_or_init(|| Mutex::new(HashMap::new()))
+}
+
+/// Populate cache from DB. Called once at startup.
+pub fn warm_settings_cache(app: &AppHandle) {
+    if let Some(state) = app.try_state::<DbState>() {
+        if let Ok(conn) = state.conn.lock() {
+            if let Ok(mut stmt) = conn.prepare("SELECT key, value FROM settings") {
+                if let Ok(rows) = stmt.query_map([], |row| Ok((row.get::<_, String>(0)?, row.get::<_, String>(1)?))) {
+                    let mut cache = settings_cache().lock().unwrap();
+                    for row in rows.flatten() {
+                        cache.insert(row.0, row.1);
+                    }
+                }
+            }
+        }
+    }
+}
+
+fn update_cached_setting(key: &str, value: &str) {
+    if let Ok(mut cache) = settings_cache().lock() {
+        cache.insert(key.to_string(), value.to_string());
+    }
+}
+
+/// Read a setting from cache (falls back to DB on cache miss).
+fn cached_setting(app: &AppHandle, key: &str) -> String {
+    if let Ok(cache) = settings_cache().lock() {
+        if let Some(v) = cache.get(key) {
+            return v.clone();
+        }
+    }
+    // Cache miss — read from DB and populate cache
+    let value = get_setting_from_db(app, key);
+    if !value.is_empty() {
+        update_cached_setting(key, &value);
+    }
+    value
+}
+
+fn get_setting_from_db(app: &AppHandle, key: &str) -> String {
+    if let Some(state) = app.try_state::<DbState>() {
+        if let Ok(conn) = state.conn.lock() {
+            return conn.query_row(
+                "SELECT value FROM settings WHERE key = ?1",
+                params![key],
+                |row| row.get(0),
+            ).unwrap_or_default();
+        }
+    }
+    String::new()
 }
 
 const SCHEMA_SQL: &str = "
@@ -19,6 +77,9 @@ const SCHEMA_SQL: &str = "
 
     CREATE INDEX IF NOT EXISTS idx_clipboard_created_at
         ON clipboard_records(created_at);
+
+    CREATE INDEX IF NOT EXISTS idx_clipboard_type
+        ON clipboard_records(type);
 
     CREATE TABLE IF NOT EXISTS phrase_groups (
         id TEXT PRIMARY KEY,
@@ -109,23 +170,45 @@ fn db_path() -> PathBuf {
     current
 }
 
+static STORAGE_DIR_CACHE: std::sync::OnceLock<Mutex<Option<PathBuf>>> = std::sync::OnceLock::new();
+
+pub fn invalidate_storage_dir_cache() {
+    if let Some(cache) = STORAGE_DIR_CACHE.get() {
+        if let Ok(mut c) = cache.lock() {
+            *c = None;
+        }
+    }
+}
+
 pub fn get_storage_dir(app: &AppHandle) -> PathBuf {
-    let state = app.state::<DbState>();
-    let conn = state.conn.lock().unwrap();
-    if let Ok(path) = conn.query_row(
-        "SELECT value FROM settings WHERE key = 'storage_path'",
-        [],
-        |row| row.get::<_, String>(0),
-    ) {
-        if !path.is_empty() {
-            let custom_dir = PathBuf::from(&path);
-            if custom_dir.exists() || std::fs::create_dir_all(&custom_dir).is_ok() {
-                return custom_dir;
+    if let Some(cache) = STORAGE_DIR_CACHE.get() {
+        if let Ok(c) = cache.lock() {
+            if let Some(ref path) = *c {
+                return path.clone();
             }
         }
     }
-    drop(conn);
-    default_data_dir()
+
+    let resolved = if let Some(custom) = get_setting_sync(app, "storage_path") {
+        if !custom.is_empty() {
+            let custom_dir = PathBuf::from(&custom);
+            if custom_dir.exists() || std::fs::create_dir_all(&custom_dir).is_ok() {
+                custom_dir
+            } else {
+                default_data_dir()
+            }
+        } else {
+            default_data_dir()
+        }
+    } else {
+        default_data_dir()
+    };
+
+    let cache = STORAGE_DIR_CACHE.get_or_init(|| Mutex::new(None));
+    if let Ok(mut c) = cache.lock() {
+        *c = Some(resolved.clone());
+    }
+    resolved
 }
 
 pub fn init_db(app: &AppHandle) -> Result<(), Box<dyn std::error::Error>> {
@@ -157,6 +240,8 @@ pub fn init_db(app: &AppHandle) -> Result<(), Box<dyn std::error::Error>> {
     app.manage(DbState {
         conn: Mutex::new(conn),
     });
+
+    warm_settings_cache(app);
 
     Ok(())
 }
@@ -238,6 +323,7 @@ pub fn get_clipboard_records(
     app: AppHandle,
     search: Option<String>,
     limit: Option<u32>,
+    record_type: Option<String>,
 ) -> Result<Vec<serde_json::Value>, String> {
     let state = app.state::<DbState>();
     let conn = state.conn.lock().map_err(|e| e.to_string())?;
@@ -247,46 +333,78 @@ pub fn get_clipboard_records(
 
     if let Some(q) = search {
         let escaped = q.replace('\\', "\\\\").replace('%', "\\%").replace('_', "\\_");
-        let mut stmt = conn
-            .prepare(
-                "SELECT id, type, content, source_app, created_at FROM clipboard_records
-                 WHERE content LIKE '%' || ?1 || '%' ESCAPE '\\' ORDER BY created_at DESC LIMIT ?2",
-            )
-            .map_err(|e| e.to_string())?;
-        let rows = stmt
-            .query_map(params![escaped, lim], |row| {
-                Ok(serde_json::json!({
-                    "id": row.get::<_, String>(0)?,
-                    "type": row.get::<_, String>(1)?,
-                    "content": row.get::<_, String>(2)?,
-                    "source_app": row.get::<_, String>(3)?,
-                    "created_at": row.get::<_, String>(4)?,
-                }))
-            })
-            .map_err(|e| e.to_string())?;
-        for row in rows {
-            records.push(row.map_err(|e| e.to_string())?);
+        if let Some(ref rt) = record_type {
+            let sql = "SELECT id, type, content, source_app, created_at FROM clipboard_records
+                 WHERE type = ?1 AND content LIKE '%' || ?2 || '%' ESCAPE '\\' ORDER BY created_at DESC LIMIT ?3";
+            let mut stmt = conn.prepare(sql).map_err(|e| e.to_string())?;
+            let rows = stmt
+                .query_map(params![rt, escaped, lim], |row| {
+                    Ok(serde_json::json!({
+                        "id": row.get::<_, String>(0)?,
+                        "type": row.get::<_, String>(1)?,
+                        "content": row.get::<_, String>(2)?,
+                        "source_app": row.get::<_, String>(3)?,
+                        "created_at": row.get::<_, String>(4)?,
+                    }))
+                })
+                .map_err(|e| e.to_string())?;
+            for row in rows { records.push(row.map_err(|e| e.to_string())?); }
+        } else {
+            let mut stmt = conn
+                .prepare(
+                    "SELECT id, type, content, source_app, created_at FROM clipboard_records
+                     WHERE content LIKE '%' || ?1 || '%' ESCAPE '\\' ORDER BY created_at DESC LIMIT ?2",
+                )
+                .map_err(|e| e.to_string())?;
+            let rows = stmt
+                .query_map(params![escaped, lim], |row| {
+                    Ok(serde_json::json!({
+                        "id": row.get::<_, String>(0)?,
+                        "type": row.get::<_, String>(1)?,
+                        "content": row.get::<_, String>(2)?,
+                        "source_app": row.get::<_, String>(3)?,
+                        "created_at": row.get::<_, String>(4)?,
+                    }))
+                })
+                .map_err(|e| e.to_string())?;
+            for row in rows { records.push(row.map_err(|e| e.to_string())?); }
         }
     } else {
-        let mut stmt = conn
-            .prepare(
-                "SELECT id, type, content, source_app, created_at FROM clipboard_records
-                 ORDER BY created_at DESC LIMIT ?1",
-            )
-            .map_err(|e| e.to_string())?;
-        let rows = stmt
-            .query_map(params![lim], |row| {
-                Ok(serde_json::json!({
-                    "id": row.get::<_, String>(0)?,
-                    "type": row.get::<_, String>(1)?,
-                    "content": row.get::<_, String>(2)?,
-                    "source_app": row.get::<_, String>(3)?,
-                    "created_at": row.get::<_, String>(4)?,
-                }))
-            })
-            .map_err(|e| e.to_string())?;
-        for row in rows {
-            records.push(row.map_err(|e| e.to_string())?);
+        if let Some(ref rt) = record_type {
+            let sql = "SELECT id, type, content, source_app, created_at FROM clipboard_records
+                 WHERE type = ?1 ORDER BY created_at DESC LIMIT ?2";
+            let mut stmt = conn.prepare(sql).map_err(|e| e.to_string())?;
+            let rows = stmt
+                .query_map(params![rt, lim], |row| {
+                    Ok(serde_json::json!({
+                        "id": row.get::<_, String>(0)?,
+                        "type": row.get::<_, String>(1)?,
+                        "content": row.get::<_, String>(2)?,
+                        "source_app": row.get::<_, String>(3)?,
+                        "created_at": row.get::<_, String>(4)?,
+                    }))
+                })
+                .map_err(|e| e.to_string())?;
+            for row in rows { records.push(row.map_err(|e| e.to_string())?); }
+        } else {
+            let mut stmt = conn
+                .prepare(
+                    "SELECT id, type, content, source_app, created_at FROM clipboard_records
+                     ORDER BY created_at DESC LIMIT ?1",
+                )
+                .map_err(|e| e.to_string())?;
+            let rows = stmt
+                .query_map(params![lim], |row| {
+                    Ok(serde_json::json!({
+                        "id": row.get::<_, String>(0)?,
+                        "type": row.get::<_, String>(1)?,
+                        "content": row.get::<_, String>(2)?,
+                        "source_app": row.get::<_, String>(3)?,
+                        "created_at": row.get::<_, String>(4)?,
+                    }))
+                })
+                .map_err(|e| e.to_string())?;
+            for row in rows { records.push(row.map_err(|e| e.to_string())?); }
         }
     }
     Ok(records)
@@ -545,46 +663,25 @@ pub fn clear_all_records(app: AppHandle) -> Result<(), String> {
 
 #[tauri::command]
 pub fn get_setting(app: AppHandle, key: String) -> Result<String, String> {
-    let state = app.state::<DbState>();
-    let conn = state.conn.lock().map_err(|e| e.to_string())?;
-    Ok(conn
-        .query_row(
-            "SELECT value FROM settings WHERE key = ?1",
-            params![key],
-            |row| row.get(0),
-        )
-        .unwrap_or_default())
+    Ok(cached_setting(&app, &key))
 }
 
 pub fn get_setting_sync(app: &AppHandle, key: &str) -> Option<String> {
-    let state = app.state::<DbState>();
-    let conn = state.conn.lock().ok()?;
-    conn.query_row(
-        "SELECT value FROM settings WHERE key = ?1",
-        params![key],
-        |row| row.get(0),
-    )
-    .ok()
+    let v = cached_setting(app, key);
+    if v.is_empty() { None } else { Some(v) }
 }
 
 #[tauri::command]
 pub fn get_all_settings(app: AppHandle) -> Result<std::collections::HashMap<String, String>, String> {
-    let state = app.state::<DbState>();
-    let conn = state.conn.lock().map_err(|e| e.to_string())?;
-    let mut stmt = conn
-        .prepare("SELECT key, value FROM settings")
-        .map_err(|e| e.to_string())?;
-    let rows = stmt
-        .query_map([], |row| {
-            Ok((row.get::<_, String>(0)?, row.get::<_, String>(1)?))
-        })
-        .map_err(|e| e.to_string())?;
-    let mut map = std::collections::HashMap::new();
-    for row in rows {
-        let (k, v) = row.map_err(|e| e.to_string())?;
-        map.insert(k, v);
+    {
+        let cache = settings_cache().lock().map_err(|e| e.to_string())?;
+        if !cache.is_empty() {
+            return Ok(cache.clone());
+        }
     }
-    Ok(map)
+    // Cache cold — populate from DB
+    warm_settings_cache(&app);
+    settings_cache().lock().map_err(|e| e.to_string()).map(|c| c.clone())
 }
 
 #[tauri::command]
@@ -642,6 +739,14 @@ pub fn set_setting(app: AppHandle, key: String, value: String) -> Result<(), Str
         params![key, value],
     )
     .map_err(|e| e.to_string())?;
+
+    update_cached_setting(&key, &value);
+
+    if key == "translate_proxy" {
+        crate::translator::invalidate_proxy_client();
+    }
+
+    let _ = app.emit("settings-changed", serde_json::json!({ &key: &value }));
     Ok(())
 }
 
@@ -654,13 +759,23 @@ pub fn set_settings_batch(app: AppHandle, settings: std::collections::HashMap<St
             return migrate_storage(&app, value);
         }
     }
+    let mut proxy_changed = false;
     for (key, value) in &settings {
         conn.execute(
             "INSERT INTO settings (key, value) VALUES (?1, ?2) ON CONFLICT(key) DO UPDATE SET value = ?2",
             params![key, value],
         )
         .map_err(|e| e.to_string())?;
+        update_cached_setting(key, value);
+        if key == "translate_proxy" {
+            proxy_changed = true;
+        }
     }
+    if proxy_changed {
+        crate::translator::invalidate_proxy_client();
+    }
+
+    let _ = app.emit("settings-changed", serde_json::json!(settings));
     Ok(())
 }
 
@@ -715,6 +830,14 @@ fn migrate_storage(app: &AppHandle, new_path: &str) -> Result<(), String> {
         )
         .map_err(|e| e.to_string())?;
         *conn = new_conn;
+    }
+
+    invalidate_storage_dir_cache();
+    // Pre-populate the cache with the new path
+    if let Some(cache) = STORAGE_DIR_CACHE.get() {
+        if let Ok(mut c) = cache.lock() {
+            *c = Some(custom_dir.clone());
+        }
     }
 
     log::info!("Storage migrated to: {}", new_path);

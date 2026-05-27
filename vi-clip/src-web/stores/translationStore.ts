@@ -20,6 +20,8 @@ interface TranslationState {
   translate: () => Promise<void>;
 }
 
+let nextRequestId = 0;
+
 export const useTranslationStore = create<TranslationState>((set, get) => ({
   inputText: "",
   targetLang: "zh",
@@ -35,17 +37,23 @@ export const useTranslationStore = create<TranslationState>((set, get) => ({
     const { inputText, targetLang } = get();
     if (!inputText.trim()) return;
 
+    const requestId = ++nextRequestId;
     set({ loading: true, error: null });
     try {
       const res = await invoke<TranslationResult>("translate", {
         text: inputText,
         targetLang,
       });
+      // Discard stale results from earlier requests
+      if (requestId !== nextRequestId) return;
       set({ result: res.target_text, engine: res.engine });
     } catch (e) {
+      if (requestId !== nextRequestId) return;
       set({ error: String(e) });
     } finally {
-      set({ loading: false });
+      if (requestId === nextRequestId) {
+        set({ loading: false });
+      }
     }
   },
 }));
