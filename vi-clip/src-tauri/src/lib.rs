@@ -76,12 +76,11 @@ fn apply_preview_backdrop(app: tauri::AppHandle, window_label: String) {
 
 #[tauri::command]
 fn get_app_info() -> AppInfo {
-    let current_year = chrono::Local::now().format("%Y").to_string();
     AppInfo {
         name: "ViClip",
         version: env!("CARGO_PKG_VERSION"),
         author: "wwnetboy",
-        copyright: format!("{} wwnetboy. All rights reserved.", current_year),
+        copyright: "wwnetboy. All rights reserved.".to_string(),
     }
 }
 
@@ -345,11 +344,21 @@ pub fn run() {
                 .unwrap_or(false);
             if autostart.is_enabled().unwrap_or(false) {
                 // Repair existing autostart entry (ensure --hidden arg)
-                let _ = autostart.enable();
+                if let Err(e) = autostart.enable() {
+                    log::warn!("Failed to repair autostart entry: {}", e);
+                }
             } else if !autostart_initialized {
                 // First run: enable autostart by default
-                let _ = autostart.enable();
-                let _ = db::set_setting(app.handle().clone(), "autostart_initialized".to_string(), "1".to_string());
+                // Only mark as initialized if enable() actually succeeds,
+                // so we retry on the next launch if it fails silently.
+                match autostart.enable() {
+                    Ok(_) => {
+                        let _ = db::set_setting(app.handle().clone(), "autostart_initialized".to_string(), "1".to_string());
+                    }
+                    Err(e) => {
+                        log::error!("Failed to enable autostart: {}", e);
+                    }
+                }
             }
 
             // Periodic pruning every hour
