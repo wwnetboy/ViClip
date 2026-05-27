@@ -176,6 +176,80 @@ fn apply_win10_blur_behind(hwnd: windows::Win32::Foundation::HWND) {
     }
 }
 
+/// Build a WebviewWindow with page-load retry logic and a timeout watchdog.
+/// Returns the built window for further post-build customization.
+fn build_window_with_retry<M: tauri::Manager<tauri::Wry>>(
+    _app: &tauri::App,
+    builder: tauri::WebviewWindowBuilder<'_, tauri::Wry, M>,
+    label: &str,
+) -> Result<tauri::WebviewWindow, Box<dyn std::error::Error>> {
+    use std::sync::atomic::{AtomicBool, AtomicUsize, Ordering};
+    use std::sync::Arc;
+
+    const MAX_RETRIES: usize = 3;
+    let retry_count = Arc::new(AtomicUsize::new(0));
+    let page_loaded = Arc::new(AtomicBool::new(false));
+    let retry_for_handler = retry_count.clone();
+    let loaded_for_handler = page_loaded.clone();
+    let retry_for_timeout = retry_count.clone();
+    let loaded_for_timeout = page_loaded.clone();
+    let label_for_log = label.to_string();
+
+    let window = builder
+        .on_page_load(move |window, payload| {
+            use tauri::webview::PageLoadEvent;
+            if let PageLoadEvent::Finished = payload.event() {
+                let url = payload.url().to_string();
+                if url.starts_with("chrome-error://") {
+                    let attempt = retry_for_handler.fetch_add(1, Ordering::SeqCst);
+                    if attempt < MAX_RETRIES {
+                        log::warn!(
+                            "{} window error page (attempt {}/{}); retrying after delay...",
+                            label_for_log, attempt + 1, MAX_RETRIES
+                        );
+                        let w = window.clone();
+                        std::thread::spawn(move || {
+                            std::thread::sleep(std::time::Duration::from_secs(2));
+                            let _ = w.reload();
+                        });
+                    } else {
+                        log::error!(
+                            "{} window failed to load after {} retries; giving up",
+                            label_for_log, MAX_RETRIES
+                        );
+                    }
+                } else {
+                    loaded_for_handler.store(true, Ordering::SeqCst);
+                }
+            }
+        })
+        .build()?;
+
+    // Timeout watchdog
+    let w = window.clone();
+    let lbl = label.to_string();
+    std::thread::spawn(move || {
+        std::thread::sleep(std::time::Duration::from_secs(10));
+        if !loaded_for_timeout.load(Ordering::SeqCst) {
+            let attempt = retry_for_timeout.fetch_add(1, Ordering::SeqCst);
+            if attempt < MAX_RETRIES {
+                log::warn!(
+                    "{} window load timed out (attempt {}/{}); reloading...",
+                    lbl, attempt + 1, MAX_RETRIES
+                );
+                let _ = w.reload();
+            } else {
+                log::error!(
+                    "{} window load timed out after {} retries; giving up",
+                    lbl, MAX_RETRIES
+                );
+            }
+        }
+    });
+
+    Ok(window)
+}
+
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
     tauri::Builder::default()
@@ -212,24 +286,12 @@ pub fn run() {
             // Create main window programmatically (not from config) so it
             // is created AFTER asset protocol setup, avoiding a cold-boot
             // race where WebView2 navigates before the protocol is ready.
-            let main_window = {
-                use std::sync::atomic::{AtomicBool, AtomicUsize, Ordering};
-                use std::sync::Arc;
-                use tauri::WebviewWindowBuilder;
-                use tauri::WebviewUrl;
-
-                const MAX_RETRIES: usize = 3;
-                let retry_count = Arc::new(AtomicUsize::new(0));
-                let page_loaded = Arc::new(AtomicBool::new(false));
-                let retry_for_handler = retry_count.clone();
-                let loaded_for_handler = page_loaded.clone();
-                let retry_for_timeout = retry_count.clone();
-                let loaded_for_timeout = page_loaded.clone();
-
-                let main = WebviewWindowBuilder::new(
+            let main_window = build_window_with_retry(
+                app,
+                tauri::WebviewWindowBuilder::new(
                     app,
                     "main",
-                    WebviewUrl::App("index.html".into()),
+                    tauri::WebviewUrl::App("index.html".into()),
                 )
                 .title("ViClip")
                 .inner_size(520.0, 600.0)
@@ -239,47 +301,9 @@ pub fn run() {
                 .visible(false)
                 .center()
                 .shadow(false)
-                .resizable(true)
-                .on_page_load(move |window, payload| {
-                    use tauri::webview::PageLoadEvent;
-                    if let PageLoadEvent::Finished = payload.event() {
-                        let url = payload.url().to_string();
-                        if url.starts_with("chrome-error://") {
-                            let attempt = retry_for_handler.fetch_add(1, Ordering::SeqCst);
-                            if attempt < MAX_RETRIES {
-                                log::warn!("Main window error page (attempt {}/{}); retrying after delay...", attempt + 1, MAX_RETRIES);
-                                let w = window.clone();
-                                std::thread::spawn(move || {
-                                    std::thread::sleep(std::time::Duration::from_secs(2));
-                                    let _ = w.reload();
-                                });
-                            } else {
-                                log::error!("Main window failed to load after {} retries; giving up", MAX_RETRIES);
-                            }
-                        } else {
-                            loaded_for_handler.store(true, Ordering::SeqCst);
-                        }
-                    }
-                })
-                .build()?;
-
-                // Timeout watchdog: if page hasn't loaded within 10s, trigger reload
-                let w = main.clone();
-                std::thread::spawn(move || {
-                    std::thread::sleep(std::time::Duration::from_secs(10));
-                    if !loaded_for_timeout.load(Ordering::SeqCst) {
-                        let attempt = retry_for_timeout.fetch_add(1, Ordering::SeqCst);
-                        if attempt < MAX_RETRIES {
-                            log::warn!("Main window load timed out (attempt {}/{}); reloading...", attempt + 1, MAX_RETRIES);
-                            let _ = w.reload();
-                        } else {
-                            log::error!("Main window load timed out after {} retries; giving up", MAX_RETRIES);
-                        }
-                    }
-                });
-
-                main
-            };
+                .resizable(true),
+                "main",
+            )?;
 
             #[cfg(target_os = "windows")]
             {
@@ -377,148 +401,56 @@ pub fn run() {
 
             // Create hidden radial menu popup window
             {
-                use std::sync::atomic::{AtomicBool, AtomicUsize, Ordering};
-                use std::sync::Arc;
-                use tauri::WebviewWindowBuilder;
-                use tauri::WebviewUrl;
-
-                const MAX_RETRIES: usize = 3;
-                let retry_count = Arc::new(AtomicUsize::new(0));
-                let page_loaded = Arc::new(AtomicBool::new(false));
-                let retry_for_handler = retry_count.clone();
-                let loaded_for_handler = page_loaded.clone();
-                let retry_for_timeout = retry_count.clone();
-                let loaded_for_timeout = page_loaded.clone();
-
-                let radial = WebviewWindowBuilder::new(
+                let radial = build_window_with_retry(
                     app,
+                    tauri::WebviewWindowBuilder::new(
+                        app,
+                        "radial-menu",
+                        tauri::WebviewUrl::App("index.html?radial=1".into()),
+                    )
+                    .title("")
+                    .inner_size(300.0, 420.0)
+                    .decorations(false)
+                    .transparent(true)
+                    .always_on_top(true)
+                    .visible(false)
+                    .shadow(false)
+                    .skip_taskbar(true)
+                    .resizable(false),
                     "radial-menu",
-                    WebviewUrl::App("index.html?radial=1".into()),
-                )
-                .title("")
-                .inner_size(300.0, 420.0)
-                .decorations(false)
-                .transparent(true)
-                .always_on_top(true)
-                .visible(false)
-                .shadow(false)
-                .skip_taskbar(true)
-                .resizable(false)
-                .on_page_load(move |window, payload| {
-                    use tauri::webview::PageLoadEvent;
-                    if let PageLoadEvent::Finished = payload.event() {
-                        let url = payload.url().to_string();
-                        if url.starts_with("chrome-error://") {
-                            let attempt = retry_for_handler.fetch_add(1, Ordering::SeqCst);
-                            if attempt < MAX_RETRIES {
-                                log::warn!("Radial window error page (attempt {}/{}); retrying after delay...", attempt + 1, MAX_RETRIES);
-                                let w = window.clone();
-                                std::thread::spawn(move || {
-                                    std::thread::sleep(std::time::Duration::from_secs(2));
-                                    let _ = w.reload();
-                                });
-                            } else {
-                                log::error!("Radial window failed to load after {} retries; giving up", MAX_RETRIES);
-                            }
-                        } else {
-                            loaded_for_handler.store(true, Ordering::SeqCst);
-                        }
-                    }
-                })
-                .build()?;
+                )?;
 
                 let _ = radial.set_background_color(Some(tauri::window::Color(0, 0, 0, 0)));
                 #[cfg(target_os = "windows")]
                 apply_backdrop_effect(&radial, true);
-
-                // Timeout watchdog
-                let w = radial.clone();
-                std::thread::spawn(move || {
-                    std::thread::sleep(std::time::Duration::from_secs(10));
-                    if !loaded_for_timeout.load(Ordering::SeqCst) {
-                        let attempt = retry_for_timeout.fetch_add(1, Ordering::SeqCst);
-                        if attempt < MAX_RETRIES {
-                            log::warn!("Radial window load timed out (attempt {}/{}); reloading...", attempt + 1, MAX_RETRIES);
-                            let _ = w.reload();
-                        } else {
-                            log::error!("Radial window load timed out after {} retries; giving up", MAX_RETRIES);
-                        }
-                    }
-                });
 
                 log::info!("Radial menu popup window created");
             }
 
             // Create toast notification window (bottom-right, always-on-top, transparent)
             {
-                use std::sync::atomic::{AtomicBool, AtomicUsize, Ordering};
-                use std::sync::Arc;
-                use tauri::WebviewWindowBuilder;
-                use tauri::WebviewUrl;
-
-                const MAX_RETRIES: usize = 3;
-                let retry_count = Arc::new(AtomicUsize::new(0));
-                let page_loaded = Arc::new(AtomicBool::new(false));
-                let retry_for_handler = retry_count.clone();
-                let loaded_for_handler = page_loaded.clone();
-                let retry_for_timeout = retry_count.clone();
-                let loaded_for_timeout = page_loaded.clone();
-
-                let toast = WebviewWindowBuilder::new(
+                let toast = build_window_with_retry(
                     app,
+                    tauri::WebviewWindowBuilder::new(
+                        app,
+                        "toast",
+                        tauri::WebviewUrl::App("index.html?toast=1".into()),
+                    )
+                    .title("")
+                    .inner_size(320.0, 80.0)
+                    .decorations(false)
+                    .transparent(true)
+                    .always_on_top(true)
+                    .visible(true)
+                    .shadow(false)
+                    .skip_taskbar(true)
+                    .resizable(false)
+                    .focused(false),
                     "toast",
-                    WebviewUrl::App("index.html?toast=1".into()),
-                )
-                .title("")
-                .inner_size(320.0, 80.0)
-                .decorations(false)
-                .transparent(true)
-                .always_on_top(true)
-                .visible(true)
-                .shadow(false)
-                .skip_taskbar(true)
-                .resizable(false)
-                .focused(false)
-                .on_page_load(move |window, payload| {
-                    use tauri::webview::PageLoadEvent;
-                    if let PageLoadEvent::Finished = payload.event() {
-                        let url = payload.url().to_string();
-                        if url.starts_with("chrome-error://") {
-                            let attempt = retry_for_handler.fetch_add(1, Ordering::SeqCst);
-                            if attempt < MAX_RETRIES {
-                                log::warn!("Toast window error page (attempt {}/{}); retrying after delay...", attempt + 1, MAX_RETRIES);
-                                let w = window.clone();
-                                std::thread::spawn(move || {
-                                    std::thread::sleep(std::time::Duration::from_secs(2));
-                                    let _ = w.reload();
-                                });
-                            } else {
-                                log::error!("Toast window failed to load after {} retries; giving up", MAX_RETRIES);
-                            }
-                        } else {
-                            loaded_for_handler.store(true, Ordering::SeqCst);
-                        }
-                    }
-                })
-                .build()?;
+                )?;
 
                 let _ = toast.set_background_color(Some(tauri::window::Color(0, 0, 0, 0)));
                 let _ = toast.set_ignore_cursor_events(true);
-
-                // Timeout watchdog
-                let w = toast.clone();
-                std::thread::spawn(move || {
-                    std::thread::sleep(std::time::Duration::from_secs(10));
-                    if !loaded_for_timeout.load(Ordering::SeqCst) {
-                        let attempt = retry_for_timeout.fetch_add(1, Ordering::SeqCst);
-                        if attempt < MAX_RETRIES {
-                            log::warn!("Toast window load timed out (attempt {}/{}); reloading...", attempt + 1, MAX_RETRIES);
-                            let _ = w.reload();
-                        } else {
-                            log::error!("Toast window load timed out after {} retries; giving up", MAX_RETRIES);
-                        }
-                    }
-                });
 
                 // Position at bottom-right of primary monitor, above the taskbar
                 #[cfg(target_os = "windows")]

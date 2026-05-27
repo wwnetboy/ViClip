@@ -18,6 +18,26 @@ const LANGUAGES = [
   { code: "vi", name: "Tiếng Việt", badge: "VI" },
 ];
 
+function localizeError(error: string, t: (key: string) => string): string {
+  const lower = error.toLowerCase();
+  if (lower.includes("connect") || lower.includes("network") || lower.includes("proxy")) {
+    return t("translate.errors.network");
+  }
+  if (lower.includes("timeout") || lower.includes("timed out")) {
+    return t("translate.errors.timeout");
+  }
+  if (lower.includes("http")) {
+    return t("translate.errors.http");
+  }
+  if (lower.includes("unexpected") || lower.includes("parse") || lower.includes("format error")) {
+    return t("translate.errors.parse");
+  }
+  if (lower.includes("not configured") || lower.includes("fill in the")) {
+    return t("translate.errors.config");
+  }
+  return t("translate.errors.generic");
+}
+
 export default function TranslationPage() {
   const { t } = useTranslation();
   const {
@@ -86,8 +106,13 @@ export default function TranslationPage() {
 
       {error && (
         <div className="translation-error">
-          <div className="error-icon-svg">{Icons.delete}</div>
-          <span className="translation-error-text">{error}</span>
+          <div className="translation-error-top">
+            <div className="error-icon-svg">{Icons.delete}</div>
+            <span className="translation-error-text">{localizeError(error, t)}</span>
+            <button className="translation-retry-btn" onClick={translate} title={t("translate.retry")}>
+              {Icons.refresh}
+            </button>
+          </div>
         </div>
       )}
 

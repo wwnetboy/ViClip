@@ -6,7 +6,7 @@ use tauri_plugin_clipboard_manager::ClipboardExt;
 use image::ImageEncoder;
 
 fn hash_bytes(data: &[u8]) -> u64 {
-    data.iter().fold(0u64, |acc, &b| acc.wrapping_mul(31).wrapping_add(b as u64))
+    xxhash_rust::xxh3::xxh3_64(data)
 }
 
 fn encode_rgba_to_png(rgba: &[u8], w: u32, h: u32) -> Vec<u8> {
@@ -141,6 +141,8 @@ fn import_image_file(app: &AppHandle, file_path: &str) -> bool {
     crate::paste::cache_image(relative.clone(), rgba.to_vec(), img_w, img_h, png_bytes.clone());
 
     save_thumbnail(&dir, &filename, &decoded);
+
+    *LAST_IMAGE_RELATIVE.lock().unwrap_or_else(|e| e.into_inner()) = relative.clone();
 
     insert_and_emit(app, "image", &relative);
     true
@@ -374,6 +376,8 @@ pub static LAST_CLIPBOARD_TEXT: std::sync::Mutex<String> = std::sync::Mutex::new
 pub static LAST_CLIPBOARD_IMAGE_HASH: std::sync::Mutex<u64> = std::sync::Mutex::new(0);
 #[cfg(target_os = "windows")]
 pub static LAST_CLIPBOARD_FILES_KEY: std::sync::Mutex<String> = std::sync::Mutex::new(String::new());
+/// Cached relative path of the last recorded image, avoids re-decoding on re-copy.
+static LAST_IMAGE_RELATIVE: std::sync::Mutex<String> = std::sync::Mutex::new(String::new());
 
 /// Windows clipboard sequence number — increments on every clipboard change,
 /// even if content is identical. Used to detect re-copies of the same content.
@@ -444,16 +448,16 @@ fn insert_and_emit(app: &AppHandle, record_type: &str, content: &str) {
 
 pub fn sync_monitor_cache(handle: &AppHandle) {
     if let Ok(text) = handle.clipboard().read_text() {
-        *LAST_CLIPBOARD_TEXT.lock().unwrap() = text.trim().to_string();
+        *LAST_CLIPBOARD_TEXT.lock().unwrap_or_else(|e| e.into_inner()) = text.trim().to_string();
     }
     #[cfg(target_os = "windows")]
     {
         let h = get_clipboard_image_hash();
         if h != 0 {
-            *LAST_CLIPBOARD_IMAGE_HASH.lock().unwrap() = h;
+            *LAST_CLIPBOARD_IMAGE_HASH.lock().unwrap_or_else(|e| e.into_inner()) = h;
         }
         if let Some(files) = read_clipboard_files() {
-            *LAST_CLIPBOARD_FILES_KEY.lock().unwrap() = files.join("|");
+            *LAST_CLIPBOARD_FILES_KEY.lock().unwrap_or_else(|e| e.into_inner()) = files.join("|");
         }
         LAST_CLIPBOARD_SEQ.store(get_clipboard_sequence(), Ordering::SeqCst);
     }
@@ -497,6 +501,9 @@ fn save_monitor_image(
         save_thumbnail(&dir, &filename, &image::DynamicImage::ImageRgba8(rgba_img));
     }
 
+    // Cache relative path for image re-copy optimization
+    *LAST_IMAGE_RELATIVE.lock().unwrap_or_else(|e| e.into_inner()) = relative.clone();
+
     insert_and_emit(handle, "image", &relative);
     true
 }
@@ -504,8 +511,8 @@ fn save_monitor_image(
 fn handle_monitor_text(handle: &AppHandle) {
     if let Ok(text) = handle.clipboard().read_text() {
         let text = text.trim().to_string();
-        if !text.is_empty() && text != *LAST_CLIPBOARD_TEXT.lock().unwrap() {
-            *LAST_CLIPBOARD_TEXT.lock().unwrap() = text.clone();
+        if !text.is_empty() && text != *LAST_CLIPBOARD_TEXT.lock().unwrap_or_else(|e| e.into_inner()) {
+            *LAST_CLIPBOARD_TEXT.lock().unwrap_or_else(|e| e.into_inner()) = text.clone();
             let record_type = if is_url(&text) { "link" } else { "text" };
             insert_and_emit(handle, record_type, &text);
         } else if !text.is_empty() {
@@ -521,7 +528,7 @@ fn handle_monitor_files(handle: &AppHandle) {
         if let Some(files) = read_clipboard_files() {
             let key = files.join("|");
             {
-                let mut cached = LAST_CLIPBOARD_FILES_KEY.lock().unwrap();
+                let mut cached = LAST_CLIPBOARD_FILES_KEY.lock().unwrap_or_else(|e| e.into_inner());
                 if key == *cached {
                     for file_path in &files {
                         if file_path.trim().is_empty() { continue; }
@@ -559,12 +566,12 @@ pub fn start_monitor(app: &AppHandle) -> Result<(), Box<dyn std::error::Error>> 
         let initial_text = handle.clipboard().read_text()
             .map(|s| s.trim().to_string())
             .unwrap_or_default();
-        *LAST_CLIPBOARD_TEXT.lock().unwrap() = initial_text;
+        *LAST_CLIPBOARD_TEXT.lock().unwrap_or_else(|e| e.into_inner()) = initial_text;
     }
 
     #[cfg(target_os = "windows")]
     {
-        *LAST_CLIPBOARD_IMAGE_HASH.lock().unwrap() = get_clipboard_image_hash();
+        *LAST_CLIPBOARD_IMAGE_HASH.lock().unwrap_or_else(|e| e.into_inner()) = get_clipboard_image_hash();
     }
 
     #[cfg(target_os = "windows")]
@@ -572,25 +579,26 @@ pub fn start_monitor(app: &AppHandle) -> Result<(), Box<dyn std::error::Error>> 
         let key = read_clipboard_files()
             .map(|files| files.join("|"))
             .unwrap_or_default();
-        *LAST_CLIPBOARD_FILES_KEY.lock().unwrap() = key;
+        *LAST_CLIPBOARD_FILES_KEY.lock().unwrap_or_else(|e| e.into_inner()) = key;
         LAST_CLIPBOARD_SEQ.store(get_clipboard_sequence(), Ordering::SeqCst);
     }
 
     std::thread::spawn(move || {
         let mut poll_count: u32 = 0;
         loop {
-        std::thread::sleep(std::time::Duration::from_millis(800));
+        let result = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
+        std::thread::sleep(std::time::Duration::from_millis(500));
         poll_count += 1;
 
-        // Skip first 2 polls (1.6s) to avoid recording startup clipboard state
-        if poll_count <= 2 {
+        // Skip first 3 polls (1.5s) to avoid recording startup clipboard state
+        if poll_count <= 3 {
             sync_monitor_cache(&handle);
-            continue;
+            return;
         }
 
         if crate::paste::PASTING.load(std::sync::atomic::Ordering::SeqCst) {
             sync_monitor_cache(&handle);
-            continue;
+            return;
         }
 
         // Detect clipboard changes via Windows sequence number.
@@ -612,7 +620,7 @@ pub fn start_monitor(app: &AppHandle) -> Result<(), Box<dyn std::error::Error>> 
         };
 
         if !seq_changed {
-            continue;
+            return;
         }
 
         let mut image_recorded = false;
@@ -625,7 +633,7 @@ pub fn start_monitor(app: &AppHandle) -> Result<(), Box<dyn std::error::Error>> 
         #[cfg(target_os = "windows")]
         {
             let raw_hash = get_clipboard_image_hash();
-            let mut cached_hash = LAST_CLIPBOARD_IMAGE_HASH.lock().unwrap();
+            let mut cached_hash = LAST_CLIPBOARD_IMAGE_HASH.lock().unwrap_or_else(|e| e.into_inner());
             if raw_hash != 0 && raw_hash != *cached_hash {
                 *cached_hash = raw_hash;
                 drop(cached_hash);
@@ -648,7 +656,7 @@ pub fn start_monitor(app: &AppHandle) -> Result<(), Box<dyn std::error::Error>> 
                 let rgba = image.rgba();
                 if !rgba.is_empty() && image.width() > 0 && image.height() > 0 {
                     let hash = hash_bytes(&rgba[..400.min(rgba.len())]);
-                    let mut cached_hash = LAST_CLIPBOARD_IMAGE_HASH.lock().unwrap();
+                    let mut cached_hash = LAST_CLIPBOARD_IMAGE_HASH.lock().unwrap_or_else(|e| e.into_inner());
                     if hash != *cached_hash {
                         *cached_hash = hash;
                         image_data = Some((rgba.to_vec(), image.width(), image.height()));
@@ -663,32 +671,40 @@ pub fn start_monitor(app: &AppHandle) -> Result<(), Box<dyn std::error::Error>> 
 
         // Handle re-copy of same image: sequence changed but raw hash didn't.
         // Still insert a new chronological record pointing to the same file on disk.
+        // Use cached relative path to avoid re-decoding the image from clipboard.
         if image_is_same {
-            #[cfg(target_os = "windows")]
-            {
-                if let Some((rgba_vec, _img_w, _img_h)) = read_clipboard_image_raw() {
-                    let content_hash: u64 = hash_bytes(&rgba_vec);
-                    let content_hash_str = format!("{:016x}", content_hash);
-                    let relative = format!("images/{}.png", content_hash_str);
-                    insert_and_emit(&handle, "image", &relative);
-                } else {
-                    log::warn!("clipboard: image_is_same but read_clipboard_image_raw failed, record lost");
-                }
+            let relative = LAST_IMAGE_RELATIVE.lock().unwrap_or_else(|e| e.into_inner()).clone();
+            if !relative.is_empty() {
+                insert_and_emit(&handle, "image", &relative);
             }
             sync_monitor_cache(&handle);
         } else if image_recorded {
             if let Ok(text) = handle.clipboard().read_text() {
-                *LAST_CLIPBOARD_TEXT.lock().unwrap() = text.trim().to_string();
+                *LAST_CLIPBOARD_TEXT.lock().unwrap_or_else(|e| e.into_inner()) = text.trim().to_string();
             }
             #[cfg(target_os = "windows")]
             {
                 if let Some(files) = read_clipboard_files() {
-                    *LAST_CLIPBOARD_FILES_KEY.lock().unwrap() = files.join("|");
+                    *LAST_CLIPBOARD_FILES_KEY.lock().unwrap_or_else(|e| e.into_inner()) = files.join("|");
                 }
             }
         } else {
             handle_monitor_text(&handle);
             handle_monitor_files(&handle);
+        }
+        }));
+        if let Err(e) = result {
+            let msg = if let Some(s) = e.downcast_ref::<String>() {
+                s.clone()
+            } else if let Some(s) = e.downcast_ref::<&str>() {
+                s.to_string()
+            } else {
+                "unknown panic".to_string()
+            };
+            log::error!("clipboard monitor panic: {}. Restarting...", msg);
+            // Reset poll count so we skip the first 2 polls after restart
+            poll_count = 0;
+            sync_monitor_cache(&handle);
         }
     }
     });

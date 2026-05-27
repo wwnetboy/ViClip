@@ -888,15 +888,22 @@ Function CreateOrUpdateStartMenuShortcut
     Return
   ${EndIf}
 
-  ; Skip creating shortcut if in update mode or no shortcut mode
-  ; but always create if migrating from wix
-  ${If} $WixMode = 0
-    ${If} $UpdateMode = 1
-    ${OrIf} $NoShortcutMode = 1
-      Return
-    ${EndIf}
+  ; In update mode, delete and recreate shortcut to refresh the icon
+  ${If} $UpdateMode = 1
+    !if "${STARTMENUFOLDER}" != ""
+      Delete "$SMPROGRAMS\$AppStartMenuFolder\${PRODUCTNAME}.lnk"
+      CreateDirectory "$SMPROGRAMS\$AppStartMenuFolder"
+    !else
+      Delete "$SMPROGRAMS\${PRODUCTNAME}.lnk"
+    !endif
+    Goto create_start_menu_shortcut
   ${EndIf}
 
+  ${If} $NoShortcutMode = 1
+    Return
+  ${EndIf}
+
+  create_start_menu_shortcut:
   !if "${STARTMENUFOLDER}" != ""
     CreateDirectory "$SMPROGRAMS\$AppStartMenuFolder"
     CreateShortcut "$SMPROGRAMS\$AppStartMenuFolder\${PRODUCTNAME}.lnk" "$INSTDIR\${MAINBINARYNAME}.exe"
@@ -917,15 +924,17 @@ Function CreateOrUpdateDesktopShortcut
     Return
   ${EndIf}
 
-  ; Skip creating shortcut if in update mode or no shortcut mode
-  ; but always create if migrating from wix
-  ${If} $WixMode = 0
-    ${If} $UpdateMode = 1
-    ${OrIf} $NoShortcutMode = 1
-      Return
-    ${EndIf}
+  ; In update mode, delete and recreate shortcut to refresh the icon
+  ${If} $UpdateMode = 1
+    Delete "$DESKTOP\${PRODUCTNAME}.lnk"
+    Goto create_shortcut
   ${EndIf}
 
+  ${If} $NoShortcutMode = 1
+    Return
+  ${EndIf}
+
+  create_shortcut:
   CreateShortcut "$DESKTOP\${PRODUCTNAME}.lnk" "$INSTDIR\${MAINBINARYNAME}.exe"
   !insertmacro SetLnkAppUserModelId "$DESKTOP\${PRODUCTNAME}.lnk"
 FunctionEnd

@@ -8,12 +8,17 @@ type UnlistenFn = () => void;
 export const CLIP_TYPES = ["all", "text", "image", "link", "file"] as const;
 export type ClipType = (typeof CLIP_TYPES)[number];
 
+const MAX_THUMB_CACHE = 50;
+const MAX_IMAGE_CACHE = 20;
+
 interface ClipboardState {
   records: ClipboardRecord[];
   search: string;
   loading: boolean;
   thumbnailCache: Record<string, string>;
+  thumbnailCacheOrder: string[];
   imageCache: Record<string, string>;
+  imageCacheOrder: string[];
   category: ClipType;
   initialized: boolean;
 
@@ -57,12 +62,32 @@ function enqueue<T>(fn: () => Promise<T>): Promise<T> {
   });
 }
 
+function addToCache(
+  cache: Record<string, string>,
+  order: string[],
+  key: string,
+  value: string,
+  max: number,
+): { cache: Record<string, string>; order: string[] } {
+  const newCache = { ...cache, [key]: value };
+  const newOrder = order.filter((k) => k !== key);
+  newOrder.push(key);
+  for (let i = 0; newOrder.length > max; i++) {
+    delete newCache[newOrder[i]];
+    newOrder.shift();
+    i--;
+  }
+  return { cache: newCache, order: newOrder };
+}
+
 export const useClipboardStore = create<ClipboardState>((set, get) => ({
   records: [],
   search: "",
   loading: false,
   thumbnailCache: {},
+  thumbnailCacheOrder: [],
   imageCache: {},
+  imageCacheOrder: [],
   category: "all",
   initialized: false,
 
@@ -122,7 +147,9 @@ export const useClipboardStore = create<ClipboardState>((set, get) => ({
       set({
         records: get().records.filter((r) => r.id !== id),
         thumbnailCache: thumbCache,
+        thumbnailCacheOrder: get().thumbnailCacheOrder.filter((k) => k !== id),
         imageCache: cache,
+        imageCacheOrder: get().imageCacheOrder.filter((k) => k !== id),
       });
     } catch (e) {
       console.error("Failed to delete record:", e);
@@ -158,7 +185,11 @@ export const useClipboardStore = create<ClipboardState>((set, get) => ({
           maxSize: 200,
         });
         const url = `data:image/png;base64,${base64}`;
-        set({ thumbnailCache: { ...get().thumbnailCache, [record.id]: url } });
+        const { cache, order } = addToCache(
+          get().thumbnailCache, get().thumbnailCacheOrder,
+          record.id, url, MAX_THUMB_CACHE,
+        );
+        set({ thumbnailCache: cache, thumbnailCacheOrder: order });
         return url;
       } catch (e) {
         console.error("Failed to load thumbnail:", e);
@@ -176,7 +207,11 @@ export const useClipboardStore = create<ClipboardState>((set, get) => ({
         path: record.content,
       });
       const url = `data:image/png;base64,${base64}`;
-      set({ imageCache: { ...get().imageCache, [record.id]: url } });
+      const { cache, order } = addToCache(
+        get().imageCache, get().imageCacheOrder,
+        record.id, url, MAX_IMAGE_CACHE,
+      );
+      set({ imageCache: cache, imageCacheOrder: order });
       return url;
     } catch (e) {
       console.error("Failed to load image:", e);

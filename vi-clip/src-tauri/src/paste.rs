@@ -48,7 +48,7 @@ impl Drop for PasteGuard {
 }
 
 pub fn cache_image(path: String, rgba: Vec<u8>, width: u32, height: u32, png_bytes: Vec<u8>) {
-    let mut cache = get_image_cache().lock().unwrap();
+    let mut cache = get_image_cache().lock().unwrap_or_else(|e| e.into_inner());
     // Evict oldest entries (deterministic insertion order)
     if cache.map.len() >= 10 {
         let evict_count = 5.min(cache.order.len());
@@ -406,7 +406,7 @@ pub fn paste_image(app: AppHandle, path: String) -> Result<(), String> {
         let _guard = PasteGuard;
 
         let (rgba, w, h, png) = {
-            let cache = get_image_cache().lock().unwrap();
+            let cache = get_image_cache().lock().unwrap_or_else(|e| e.into_inner());
             if let Some(cached) = cache.map.get(&path) {
                 (cached.rgba.clone(), cached.width, cached.height, cached.png_bytes.clone())
             } else {

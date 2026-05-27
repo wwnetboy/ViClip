@@ -1,5 +1,21 @@
 use reqwest::header::{HeaderMap, HeaderValue, USER_AGENT, ACCEPT};
 use serde::Serialize;
+use std::sync::OnceLock;
+
+static HTTP_CLIENT: OnceLock<reqwest::Client> = OnceLock::new();
+
+fn http_client() -> &'static reqwest::Client {
+    HTTP_CLIENT.get_or_init(|| {
+        let mut headers = HeaderMap::new();
+        headers.insert(USER_AGENT, HeaderValue::from_static("ViClip"));
+        headers.insert(ACCEPT, HeaderValue::from_static("*/*"));
+        reqwest::Client::builder()
+            .default_headers(headers)
+            .timeout(std::time::Duration::from_secs(30))
+            .build()
+            .expect("Failed to create HTTP client")
+    })
+}
 
 #[derive(Serialize, Clone)]
 pub struct UpdateInfo {
@@ -33,18 +49,9 @@ fn version_greater(a: &str, b: &str) -> bool {
 pub async fn check_update() -> Result<UpdateInfo, String> {
     let current = env!("CARGO_PKG_VERSION");
 
-    let mut headers = HeaderMap::new();
-    headers.insert(USER_AGENT, HeaderValue::from_static("ViClip"));
-    headers.insert(ACCEPT, HeaderValue::from_static("application/vnd.github+json"));
-
-    let client = reqwest::Client::builder()
-        .default_headers(headers)
-        .timeout(std::time::Duration::from_secs(10))
-        .build()
-        .map_err(|e| format!("Failed to create HTTP client: {}", e))?;
-
-    let response = client
+    let response = http_client()
         .get("https://api.github.com/repos/wwnetboy/ViClip/releases/latest")
+        .header(ACCEPT, HeaderValue::from_static("application/vnd.github+json"))
         .send()
         .await
         .map_err(|e| format!("Failed to check updates: {}", e))?;
@@ -90,10 +97,8 @@ pub async fn check_update() -> Result<UpdateInfo, String> {
 
 #[tauri::command]
 pub async fn download_and_install_update(url: String) -> Result<(), String> {
-    let client = reqwest::Client::new();
-    let response = client
+    let response = http_client()
         .get(&url)
-        .header(USER_AGENT, HeaderValue::from_static("ViClip"))
         .send()
         .await
         .map_err(|e| format!("Download failed: {}", e))?;

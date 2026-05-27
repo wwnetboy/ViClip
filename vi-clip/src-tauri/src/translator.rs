@@ -204,7 +204,10 @@ async fn translate_google(
         let body = resp.text().await.map_err(|e| format!("Failed to read Google response: {}", e))?;
 
         if !status.is_success() {
-            return Err(format!("Google translate HTTP {}: {}", status.as_u16(), &body[..body.len().min(80)]));
+            return Err(format!(
+                "Google Translate service returned HTTP {}. The free API may be experiencing issues. Please retry later, configure a proxy, or switch to AI translation in Settings.",
+                status.as_u16()
+            ));
         }
 
         let json: serde_json::Value = serde_json::from_str(&body)
@@ -212,7 +215,7 @@ async fn translate_google(
 
         let translated = json[0][0][0]
             .as_str()
-            .unwrap_or("Translation failed")
+            .ok_or("Google Translate free API returned an unexpected response. It may be temporarily unstable. Please retry or switch to AI translation in Settings.")?
             .to_string();
 
         return Ok(TranslateResponse {
@@ -234,7 +237,7 @@ async fn translate_google(
         .send().await.map_err(|e| fmt_reqwest_error(&e))?;
 
     let json: serde_json::Value = resp.json().await
-        .map_err(|e| format!("解析 Google 响应失败: {}", e))?;
+        .map_err(|e| format!("Failed to parse Google response: {}", e))?;
 
     if let Some(error) = json.get("error") {
         let msg = error["message"].as_str().unwrap_or("Unknown error");
@@ -243,7 +246,7 @@ async fn translate_google(
 
     let translated = json["data"]["translations"][0]["translatedText"]
         .as_str()
-        .unwrap_or("Translation failed")
+        .ok_or("Google Cloud Translation returned an unexpected response. Please check your API key and try again.")?
         .to_string();
 
     Ok(TranslateResponse {
@@ -255,11 +258,11 @@ async fn translate_google(
 
 fn fmt_reqwest_error(err: &reqwest::Error) -> String {
     if err.is_connect() {
-        "Google translate connection failed, please check proxy settings".to_string()
+        "Unable to connect to Google Translate. Please check your network, configure a proxy in Settings, or switch to AI translation.".to_string()
     } else if err.is_timeout() {
-        "Google translate request timed out".to_string()
+        "Google Translate request timed out. The free API may be unstable. Please retry, or switch to AI translation in Settings.".to_string()
     } else {
-        format!("Google translate request failed: {}", err)
+        format!("Google Translate request failed: {}. The free API may be unstable. Consider using an API key or switching to AI translation in Settings.", err)
     }
 }
 

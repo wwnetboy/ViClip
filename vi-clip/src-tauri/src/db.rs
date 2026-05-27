@@ -318,6 +318,16 @@ pub fn prune_old_records(app: &AppHandle) -> Result<(), Box<dyn std::error::Erro
 
 // ---- Tauri Commands ----
 
+fn map_record_row(row: &rusqlite::Row<'_>) -> rusqlite::Result<serde_json::Value> {
+    Ok(serde_json::json!({
+        "id": row.get::<_, String>(0)?,
+        "type": row.get::<_, String>(1)?,
+        "content": row.get::<_, String>(2)?,
+        "source_app": row.get::<_, String>(3)?,
+        "created_at": row.get::<_, String>(4)?,
+    }))
+}
+
 #[tauri::command]
 pub fn get_clipboard_records(
     app: AppHandle,
@@ -329,83 +339,44 @@ pub fn get_clipboard_records(
     let conn = state.conn.lock().map_err(|e| e.to_string())?;
     let lim = limit.unwrap_or(200);
 
-    let mut records: Vec<serde_json::Value> = Vec::new();
+    let mut sql = String::from(
+        "SELECT id, type, content, source_app, created_at FROM clipboard_records"
+    );
+    let mut param_values: Vec<String> = Vec::new();
 
-    if let Some(q) = search {
+    if let Some(ref rt) = record_type {
+        sql.push_str(" WHERE type = ?");
+        param_values.push(rt.clone());
+    }
+
+    if let Some(ref q) = search {
         let escaped = q.replace('\\', "\\\\").replace('%', "\\%").replace('_', "\\_");
-        if let Some(ref rt) = record_type {
-            let sql = "SELECT id, type, content, source_app, created_at FROM clipboard_records
-                 WHERE type = ?1 AND content LIKE '%' || ?2 || '%' ESCAPE '\\' ORDER BY created_at DESC LIMIT ?3";
-            let mut stmt = conn.prepare(sql).map_err(|e| e.to_string())?;
-            let rows = stmt
-                .query_map(params![rt, escaped, lim], |row| {
-                    Ok(serde_json::json!({
-                        "id": row.get::<_, String>(0)?,
-                        "type": row.get::<_, String>(1)?,
-                        "content": row.get::<_, String>(2)?,
-                        "source_app": row.get::<_, String>(3)?,
-                        "created_at": row.get::<_, String>(4)?,
-                    }))
-                })
-                .map_err(|e| e.to_string())?;
-            for row in rows { records.push(row.map_err(|e| e.to_string())?); }
+        if param_values.is_empty() {
+            sql.push_str(" WHERE");
         } else {
-            let mut stmt = conn
-                .prepare(
-                    "SELECT id, type, content, source_app, created_at FROM clipboard_records
-                     WHERE content LIKE '%' || ?1 || '%' ESCAPE '\\' ORDER BY created_at DESC LIMIT ?2",
-                )
-                .map_err(|e| e.to_string())?;
-            let rows = stmt
-                .query_map(params![escaped, lim], |row| {
-                    Ok(serde_json::json!({
-                        "id": row.get::<_, String>(0)?,
-                        "type": row.get::<_, String>(1)?,
-                        "content": row.get::<_, String>(2)?,
-                        "source_app": row.get::<_, String>(3)?,
-                        "created_at": row.get::<_, String>(4)?,
-                    }))
-                })
-                .map_err(|e| e.to_string())?;
-            for row in rows { records.push(row.map_err(|e| e.to_string())?); }
+            sql.push_str(" AND");
         }
-    } else {
-        if let Some(ref rt) = record_type {
-            let sql = "SELECT id, type, content, source_app, created_at FROM clipboard_records
-                 WHERE type = ?1 ORDER BY created_at DESC LIMIT ?2";
-            let mut stmt = conn.prepare(sql).map_err(|e| e.to_string())?;
-            let rows = stmt
-                .query_map(params![rt, lim], |row| {
-                    Ok(serde_json::json!({
-                        "id": row.get::<_, String>(0)?,
-                        "type": row.get::<_, String>(1)?,
-                        "content": row.get::<_, String>(2)?,
-                        "source_app": row.get::<_, String>(3)?,
-                        "created_at": row.get::<_, String>(4)?,
-                    }))
-                })
-                .map_err(|e| e.to_string())?;
-            for row in rows { records.push(row.map_err(|e| e.to_string())?); }
-        } else {
-            let mut stmt = conn
-                .prepare(
-                    "SELECT id, type, content, source_app, created_at FROM clipboard_records
-                     ORDER BY created_at DESC LIMIT ?1",
-                )
-                .map_err(|e| e.to_string())?;
-            let rows = stmt
-                .query_map(params![lim], |row| {
-                    Ok(serde_json::json!({
-                        "id": row.get::<_, String>(0)?,
-                        "type": row.get::<_, String>(1)?,
-                        "content": row.get::<_, String>(2)?,
-                        "source_app": row.get::<_, String>(3)?,
-                        "created_at": row.get::<_, String>(4)?,
-                    }))
-                })
-                .map_err(|e| e.to_string())?;
-            for row in rows { records.push(row.map_err(|e| e.to_string())?); }
-        }
+        sql.push_str(" content LIKE '%' || ? || '%' ESCAPE '\\'");
+        param_values.push(escaped);
+    }
+
+    sql.push_str(" ORDER BY created_at DESC LIMIT ?");
+    param_values.push(lim.to_string());
+
+    let mut stmt = conn.prepare(&sql).map_err(|e| e.to_string())?;
+
+    let params: Vec<&dyn rusqlite::types::ToSql> = param_values
+        .iter()
+        .map(|s| s as &dyn rusqlite::types::ToSql)
+        .collect();
+
+    let rows = stmt
+        .query_map(params.as_slice(), map_record_row)
+        .map_err(|e| e.to_string())?;
+
+    let mut records: Vec<serde_json::Value> = Vec::new();
+    for row in rows {
+        records.push(row.map_err(|e| e.to_string())?);
     }
     Ok(records)
 }
@@ -784,28 +755,102 @@ fn migrate_storage(app: &AppHandle, new_path: &str) -> Result<(), String> {
     std::fs::create_dir_all(&custom_dir).map_err(|e| format!("create dir: {}", e))?;
     let custom_db = custom_dir.join("data.db");
 
-    // Collect all settings from current DB
-    let settings: Vec<(String, String)> = {
+    // Collect all data from current DB
+    let (settings, clipboard, phrases_data, phrase_groups_data, translations) = {
         let state = app.state::<DbState>();
         let conn = state.conn.lock().map_err(|e| e.to_string())?;
-        let mut stmt = conn
-            .prepare("SELECT key, value FROM settings")
-            .map_err(|e| e.to_string())?;
-        let rows = stmt
-            .query_map([], |row| Ok((row.get::<_, String>(0)?, row.get::<_, String>(1)?)))
-            .map_err(|e| e.to_string())?;
-        rows.filter_map(|r| r.ok()).collect()
+
+        let settings: Vec<(String, String)> = {
+            let mut stmt = conn
+                .prepare("SELECT key, value FROM settings")
+                .map_err(|e| e.to_string())?;
+            let rows = stmt
+                .query_map([], |row| Ok((row.get::<_, String>(0)?, row.get::<_, String>(1)?)))
+                .map_err(|e| e.to_string())?;
+            rows.filter_map(|r| r.ok()).collect()
+        };
+
+        let clipboard: Vec<Vec<String>> = {
+            let mut stmt = conn
+                .prepare("SELECT id, type, content, source_app, created_at FROM clipboard_records")
+                .map_err(|e| e.to_string())?;
+            let rows = stmt
+                .query_map([], |row| Ok(vec![
+                    row.get::<_, String>(0)?,
+                    row.get::<_, String>(1)?,
+                    row.get::<_, String>(2)?,
+                    row.get::<_, String>(3)?,
+                    row.get::<_, String>(4)?,
+                ]))
+                .map_err(|e| e.to_string())?;
+            rows.filter_map(|r| r.ok()).collect()
+        };
+
+        let phrase_groups_data: Vec<Vec<String>> = {
+            let mut stmt = conn
+                .prepare("SELECT id, name, sort_order, created_at, updated_at FROM phrase_groups")
+                .map_err(|e| e.to_string())?;
+            let rows = stmt
+                .query_map([], |row| Ok(vec![
+                    row.get::<_, String>(0)?,
+                    row.get::<_, String>(1)?,
+                    row.get::<_, i32>(2)?.to_string(),
+                    row.get::<_, String>(3)?,
+                    row.get::<_, String>(4)?,
+                ]))
+                .map_err(|e| e.to_string())?;
+            rows.filter_map(|r| r.ok()).collect()
+        };
+
+        let phrases_data: Vec<Vec<String>> = {
+            let mut stmt = conn
+                .prepare("SELECT id, group_id, title, content, sort_order, created_at, updated_at FROM phrases")
+                .map_err(|e| e.to_string())?;
+            let rows = stmt
+                .query_map([], |row| Ok(vec![
+                    row.get::<_, String>(0)?,
+                    row.get::<_, String>(1)?,
+                    row.get::<_, String>(2)?,
+                    row.get::<_, String>(3)?,
+                    row.get::<_, i32>(4)?.to_string(),
+                    row.get::<_, String>(5)?,
+                    row.get::<_, String>(6)?,
+                ]))
+                .map_err(|e| e.to_string())?;
+            rows.filter_map(|r| r.ok()).collect()
+        };
+
+        let translations: Vec<Vec<String>> = {
+            let mut stmt = conn
+                .prepare("SELECT id, source_text, target_text, source_lang, target_lang, engine, created_at FROM translation_history")
+                .map_err(|e| e.to_string())?;
+            let rows = stmt
+                .query_map([], |row| Ok(vec![
+                    row.get::<_, String>(0)?,
+                    row.get::<_, String>(1)?,
+                    row.get::<_, String>(2)?,
+                    row.get::<_, String>(3)?,
+                    row.get::<_, String>(4)?,
+                    row.get::<_, String>(5)?,
+                    row.get::<_, String>(6)?,
+                ]))
+                .map_err(|e| e.to_string())?;
+            rows.filter_map(|r| r.ok()).collect()
+        };
+
+        (settings, clipboard, phrases_data, phrase_groups_data, translations)
     };
 
-    // Create new DB with schema and settings at target location
+    // Create new DB with schema at target location
     let new_conn = Connection::open(&custom_db).map_err(|e| format!("open new db: {}", e))?;
 
     new_conn
         .execute_batch(SCHEMA_SQL)
         .map_err(|e| format!("create schema: {}", e))?;
 
-    // Copy settings to new DB
+    // Copy all data to new DB
     {
+        // Settings
         let mut stmt = new_conn
             .prepare("INSERT INTO settings (key, value) VALUES (?1, ?2)")
             .map_err(|e| e.to_string())?;
@@ -818,6 +863,61 @@ fn migrate_storage(app: &AppHandle, new_path: &str) -> Result<(), String> {
             .map_err(|e| e.to_string())?;
         stmt.execute(params!["shortcut_key", ""])
             .map_err(|e| e.to_string())?;
+        drop(stmt);
+
+        // Clipboard records
+        if !clipboard.is_empty() {
+            let mut stmt = new_conn
+                .prepare("INSERT INTO clipboard_records (id, type, content, source_app, created_at) VALUES (?1, ?2, ?3, ?4, ?5)")
+                .map_err(|e| e.to_string())?;
+            for row in &clipboard {
+                stmt.execute(params![row[0], row[1], row[2], row[3], row[4]])
+                    .map_err(|e| e.to_string())?;
+            }
+        }
+
+        // Phrase groups
+        if !phrase_groups_data.is_empty() {
+            let mut stmt = new_conn
+                .prepare("INSERT INTO phrase_groups (id, name, sort_order, created_at, updated_at) VALUES (?1, ?2, ?3, ?4, ?5)")
+                .map_err(|e| e.to_string())?;
+            for row in &phrase_groups_data {
+                stmt.execute(params![row[0], row[1], row[2], row[3], row[4]])
+                    .map_err(|e| e.to_string())?;
+            }
+        }
+
+        // Phrases
+        if !phrases_data.is_empty() {
+            let mut stmt = new_conn
+                .prepare("INSERT INTO phrases (id, group_id, title, content, sort_order, created_at, updated_at) VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7)")
+                .map_err(|e| e.to_string())?;
+            for row in &phrases_data {
+                stmt.execute(params![row[0], row[1], row[2], row[3], row[4], row[5], row[6]])
+                    .map_err(|e| e.to_string())?;
+            }
+        }
+
+        // Translation history
+        if !translations.is_empty() {
+            let mut stmt = new_conn
+                .prepare("INSERT INTO translation_history (id, source_text, target_text, source_lang, target_lang, engine, created_at) VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7)")
+                .map_err(|e| e.to_string())?;
+            for row in &translations {
+                stmt.execute(params![row[0], row[1], row[2], row[3], row[4], row[5], row[6]])
+                    .map_err(|e| e.to_string())?;
+            }
+        }
+    }
+
+    // Copy images directory if it exists
+    let old_storage_dir = get_storage_dir(app);
+    let old_images = old_storage_dir.join("images");
+    if old_images.exists() {
+        let new_images = custom_dir.join("images");
+        if let Err(e) = copy_dir_recursive(&old_images, &new_images) {
+            log::warn!("Failed to copy images directory during migration: {}", e);
+        }
     }
 
     // Update old DB's storage_path (for chain-following on restart) and switch connection
@@ -841,6 +941,23 @@ fn migrate_storage(app: &AppHandle, new_path: &str) -> Result<(), String> {
     }
 
     log::info!("Storage migrated to: {}", new_path);
+    Ok(())
+}
+
+fn copy_dir_recursive(src: &std::path::Path, dst: &std::path::Path) -> Result<(), String> {
+    std::fs::create_dir_all(dst).map_err(|e| format!("create dir: {}", e))?;
+    let entries = std::fs::read_dir(src).map_err(|e| format!("read dir: {}", e))?;
+    for entry in entries {
+        let entry = entry.map_err(|e| format!("read entry: {}", e))?;
+        let src_path = entry.path();
+        let dst_path = dst.join(entry.file_name());
+        if src_path.is_dir() {
+            copy_dir_recursive(&src_path, &dst_path)?;
+        } else {
+            std::fs::copy(&src_path, &dst_path)
+                .map_err(|e| format!("copy file: {}", e))?;
+        }
+    }
     Ok(())
 }
 
