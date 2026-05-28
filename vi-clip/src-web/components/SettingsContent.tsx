@@ -20,11 +20,6 @@ export default function SettingsContent({ embedded }: Props) {
   const radialMenuEnabled = useSettingsStore((s) => s.radialMenuEnabled);
   const clickMode = useSettingsStore((s) => s.clickMode);
   const defaultEngine = useSettingsStore((s) => s.defaultEngine);
-  const apiUrl = useSettingsStore((s) => s.apiUrl);
-  const apiKey = useSettingsStore((s) => s.apiKey);
-  const model = useSettingsStore((s) => s.model);
-  const googleApiKey = useSettingsStore((s) => s.googleApiKey);
-  const translateProxy = useSettingsStore((s) => s.translateProxy);
   const clipboardRetention = useSettingsStore((s) => s.clipboardRetention);
   const loadSettings = useSettingsStore((s) => s.loadSettings);
   const setSetting = useSettingsStore((s) => s.setSetting);
@@ -144,31 +139,10 @@ export default function SettingsContent({ embedded }: Props) {
     showToast(t("settings.toast.engine"));
   }, [persistKey, showToast, t]);
 
-  // ── Text input callbacks (update store immediately, persist with debounce) ──
+  // ── Config persist (store update + debounced DB write) ──
 
-  const handleApiUrlChange = useCallback((value: string) => {
-    useSettingsStore.setState({ apiUrl: value });
-    debouncedPersist("ai_api_url", value, "settings.toast.aiApiUrl");
-  }, [debouncedPersist]);
-
-  const handleApiKeyChange = useCallback((value: string) => {
-    useSettingsStore.setState({ apiKey: value });
-    debouncedPersist("ai_api_key", value, "settings.toast.aiApiKey");
-  }, [debouncedPersist]);
-
-  const handleModelChange = useCallback((value: string) => {
-    useSettingsStore.setState({ model: value });
-    debouncedPersist("ai_model", value, "settings.toast.aiModel");
-  }, [debouncedPersist]);
-
-  const handleGoogleApiKeyChange = useCallback((value: string) => {
-    useSettingsStore.setState({ googleApiKey: value });
-    debouncedPersist("google_api_key", value, "settings.toast.googleApiKey");
-  }, [debouncedPersist]);
-
-  const handleTranslateProxyChange = useCallback((value: string) => {
-    useSettingsStore.setState({ translateProxy: value });
-    debouncedPersist("translate_proxy", value, "settings.toast.translateProxy");
+  const persistConfig = useCallback((dbKey: string, value: string, toastKey: string) => {
+    debouncedPersist(dbKey, value, toastKey);
   }, [debouncedPersist]);
 
   // ── Recording logic ──
@@ -274,16 +248,7 @@ export default function SettingsContent({ embedded }: Props) {
       <TranslationSection
         engine={defaultEngine}
         onEngineChange={handleEngineChange}
-        apiUrl={apiUrl}
-        onApiUrlChange={handleApiUrlChange}
-        apiKey={apiKey}
-        onApiKeyChange={handleApiKeyChange}
-        model={model}
-        onModelChange={handleModelChange}
-        googleApiKey={googleApiKey}
-        onGoogleApiKeyChange={handleGoogleApiKeyChange}
-        translateProxy={translateProxy}
-        onTranslateProxyChange={handleTranslateProxyChange}
+        persistConfig={persistConfig}
       />
 
       <StorageSection

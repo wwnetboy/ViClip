@@ -1,7 +1,7 @@
 {
   "name": "vi-clip",
   "private": true,
-  "version": "1.0.6",
+  "version": "1.0.7",
   "author": "wwnetboy <https://github.com/wwnetboy>",
   "type": "module",
   "scripts": {

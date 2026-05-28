@@ -71,6 +71,7 @@ pub fn toggle_window(app: &AppHandle) {
             }
 
             log::info!("[toggle_window] showing window");
+            let _ = window.unminimize();
             let _ = window.show();
             let _ = window.set_focus();
         }
@@ -107,40 +108,35 @@ unsafe extern "system" fn mouse_hook_callback(
                 }
                 if let Some(app) = APP_HANDLE.get() {
                     if let Some(window) = app.get_webview_window("radial-menu") {
-                        let visible = window.is_visible().unwrap_or(false);
-                        if visible {
-                            let _ = window.hide();
-                        } else {
-                            crate::paste::save_foreground_window();
+                        let hook_struct = &*(l_param.0 as *const MSLLHOOKSTRUCT);
+                        let sx = hook_struct.pt.x;
+                        let sy = hook_struct.pt.y;
 
-                            // Allow this process to call SetForegroundWindow
-                            unsafe {
-                                use windows::Win32::UI::WindowsAndMessaging::AllowSetForegroundWindow;
-                                let _ = AllowSetForegroundWindow(0xFFFFFFFF);
-                            }
+                        crate::paste::save_foreground_window();
 
-                            let hook_struct = &*(l_param.0 as *const MSLLHOOKSTRUCT);
-                            let sx = hook_struct.pt.x;
-                            let sy = hook_struct.pt.y;
-
-                            // Position window at mouse bottom-right (like Windows context menu)
-                            let _ = window.set_position(tauri::Position::Physical(
-                                tauri::PhysicalPosition::new(sx, sy),
-                            ));
-
-                            let theme = crate::db::get_setting(app.clone(), "theme".to_string())
-                                .unwrap_or_else(|_| "light".to_string());
-
-                            log::info!("radial-menu-down: screen=({}, {}), theme={}", sx, sy, theme);
-                            let _ = app.emit(
-                                "radial-menu-down",
-                                RadialMenuDownPayload { theme },
-                            );
-
-                            RADIAL_JUST_SHOWN.store(true, Ordering::SeqCst);
-                            let _ = window.show();
-                            let _ = window.set_focus();
+                        // Allow this process to call SetForegroundWindow
+                        unsafe {
+                            use windows::Win32::UI::WindowsAndMessaging::AllowSetForegroundWindow;
+                            let _ = AllowSetForegroundWindow(0xFFFFFFFF);
                         }
+
+                        // Reposition window at mouse cursor (always, regardless of visibility)
+                        let _ = window.set_position(tauri::Position::Physical(
+                            tauri::PhysicalPosition::new(sx, sy),
+                        ));
+
+                        let theme = crate::db::get_setting(app.clone(), "theme".to_string())
+                            .unwrap_or_else(|_| "light".to_string());
+
+                        log::info!("radial-menu-down: screen=({}, {}), theme={}", sx, sy, theme);
+                        let _ = app.emit(
+                            "radial-menu-down",
+                            RadialMenuDownPayload { theme },
+                        );
+
+                        RADIAL_JUST_SHOWN.store(true, Ordering::SeqCst);
+                        let _ = window.show();
+                        let _ = window.set_focus();
                     }
                 }
                 return LRESULT(1);

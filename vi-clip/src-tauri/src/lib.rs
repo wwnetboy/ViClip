@@ -422,7 +422,27 @@ pub fn run() {
 
                 let _ = radial.set_background_color(Some(tauri::window::Color(0, 0, 0, 0)));
                 #[cfg(target_os = "windows")]
-                apply_backdrop_effect(&radial, true);
+                {
+                    apply_backdrop_effect(&radial, true);
+                    // Clip window to rounded rect so that border-radius in CSS
+                    // produces clean transparent corners instead of webview gray.
+                    use windows::Win32::Foundation::HWND;
+                    use windows::Win32::UI::WindowsAndMessaging::GetClientRect;
+                    use windows::Win32::Graphics::Gdi::{CreateRoundRectRgn, SetWindowRgn};
+                    let hwnd = HWND(radial.hwnd().unwrap_or_default().0);
+                    if !hwnd.is_invalid() {
+                        unsafe {
+                            let mut rect = std::mem::zeroed();
+                            if GetClientRect(hwnd, &mut rect).is_ok() {
+                                let w = rect.right;
+                                let h = rect.bottom;
+                                let r = w / 20;
+                                let hrgn = CreateRoundRectRgn(0, 0, w + 1, h + 1, r + 1, r + 1);
+                                SetWindowRgn(hwnd, hrgn, true);
+                            }
+                        }
+                    }
+                }
 
                 log::info!("Radial menu popup window created");
             }

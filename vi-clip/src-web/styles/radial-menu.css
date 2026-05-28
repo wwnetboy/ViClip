@@ -24,8 +24,9 @@
   display: flex;
   flex-direction: column;
   overflow: hidden;
-  border: none;
   outline: none;
+  border: 0.5px solid var(--window-border);
+  border-radius: 12px;
   animation: radialMenuIn 0.2s cubic-bezier(0.22, 1, 0.36, 1);
   pointer-events: auto;
 }

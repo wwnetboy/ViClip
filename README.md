@@ -12,7 +12,7 @@
 
 **轻量级桌面效率套件**
 
-剪贴板管理 · 快捷短语 · AI 翻译 · 图片预览
+剪贴板管理 · 快捷短语 · 多引擎翻译 · 图片预览
 
 ![License](https://img.shields.io/badge/license-MIT-blue.svg)
 ![Platform](https://img.shields.io/badge/platform-Windows%2010+-brightgreen.svg)
@@ -25,7 +25,7 @@
 
 ## 项目简介
 
-ViClip 是一款轻量级桌面效率套件，以悬浮窗形式呈现，关闭后自动驻留系统托盘，集剪贴板历史管理、快捷短语、AI 翻译、快捷弹出窗口和图片预览等功能于一体。
+ViClip 是一款轻量级桌面效率套件，以悬浮窗形式呈现，关闭后自动驻留系统托盘，集剪贴板历史管理、快捷短语、多引擎翻译、快捷弹出窗口和图片预览等功能于一体。
 
 ## 主要功能
 
@@ -56,6 +56,10 @@ ViClip 是一款轻量级桌面效率套件，以悬浮窗形式呈现，关闭�
 
 - **AI 翻译**：兼容 OpenAI API 格式（支持 /v1/chat/completions），可自定义端点和模型
 - **Google 翻译**：内置免费接口，开箱即用；也可配置官方 API Key
+- **百度翻译**：专业版 API，适合中文场景
+- **有道翻译**：支持多种语言对，国内访问稳定
+- **腾讯云 TMT**：腾讯云机器翻译，支持十亿级语料
+- **火山翻译**：字节跳动旗下，神经机器翻译引擎
 - 翻译结果本地 SQLite 缓存，避免重复请求
 - 支持自定义代理服务器
 
@@ -89,7 +93,7 @@ ViClip 是一款轻量级桌面效率套件，以悬浮窗形式呈现，关闭�
 | UI 样式 | 纯 CSS — iOS 风格磨砂玻璃 + DWM 亚克力背景 |
 | 状态管理 | [Zustand](https://zustand-demo.pmnd.rs/) |
 | 本地存储 | SQLite (rusqlite, bundled) |
-| 国际化 | react-i18next（简体中文 / English） |
+| 国际化 | react-i18next（简体中文 / 繁体中文 / English / 日本語 / Deutsch / Français / Español / Italiano / Português / Русский / 한국어 / ไทย / Tiếng Việt / Bahasa Indonesia / Melayu / हिन्दी） |
 | 桌面能力 | 全局热键、鼠标钩子、剪贴板监听、模拟输入、自启动 |
 
 ## 下载安装
@@ -122,8 +126,8 @@ ViClip 是一款轻量级桌面效率套件，以悬浮窗形式呈现，关闭�
 
 1. 切换到「翻译」标签页
 2. 输入或粘贴需要翻译的文本
-3. 选择语言方向和翻译引擎（AI / Google）
-4. 如需使用 AI 翻译，在偏好设置中配置 API 端点和密钥
+3. 选择目标语言和翻译引擎（AI / Google / 百度 / 有道 / 腾讯 / 火山）
+4. 使用第三方引擎需在偏好设置中配置对应的 API 密钥
 
 ### 托盘菜单
 
@@ -195,7 +199,7 @@ vi-clip/
 │   ├── pages/              # 页面：Clipboard / Phrase / Translation
 │   ├── stores/             # Zustand 状态管理
 │   ├── styles/             # CSS 样式
-│   ├── i18n/               # 国际化（zh-CN / en）
+│   ├── i18n/               # 国际化（17 种语言）
 │   └── types/              # TypeScript 类型
 ├── src-tauri/              # Tauri 后端 (Rust)
 │   ├── src/
@@ -204,7 +208,7 @@ vi-clip/
 │   │   ├── clipboard.rs    # 剪贴板监听（800ms 轮询）
 │   │   ├── paste.rs        # 粘贴（文本/图片/文件）
 │   │   ├── shortcut.rs     # 全局热键 + 鼠标钩子
-│   │   ├── translator.rs   # 翻译引擎（AI + Google）
+│   │   ├── translator.rs   # 翻译引擎（AI / Google / 百度 / 有道 / 腾讯 / 火山）
 │   │   ├── tray.rs         # 系统托盘菜单
 │   │   └── preview_lock.rs # 图片预览窗口宽高比锁定
 │   └── Cargo.toml
@@ -212,6 +216,30 @@ vi-clip/
 └── package.json
 ```
 
-## 许可证
+## 开源
 
-[MIT](LICENSE)
+ViClip 采用 [MIT](LICENSE) 开源协议，代码托管在 GitHub。
+
+### 参与贡献
+
+欢迎通过以下方式参与项目：
+
+- **报告问题**：在 [Issues](https://github.com/wwnetboy/ViClip/issues) 中提交 Bug 报告或功能建议
+- **提交代码**：Fork 仓库 → 创建分支 → 提交 PR
+- **完善文档**：协助完善 Wiki 使用指南和翻译
+
+### 依赖与致谢
+
+ViClip 基于以下开源技术构建：
+
+| 项目 | 用途 |
+|:---|:---|
+| [Tauri](https://tauri.app/) | 桌面应用框架 |
+| [React](https://react.dev/) | 前端 UI |
+| [react-i18next](https://react.i18next.com/) | 国际化 |
+| [Zustand](https://zustand-demo.pmnd.rs/) | 状态管理 |
+| [rusqlite](https://github.com/rusqlite/rusqlite) | SQLite 数据库 |
+
+---
+
+如果这个项目对你有用，欢迎 ⭐ Star 支持！
