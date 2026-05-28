@@ -191,7 +191,7 @@ vi-clip/
 ├── src-web/                # 前端源码
 │   ├── components/         # React 组件
 │   │   ├── ImagePreview/   # 图片预览窗口
-│   │   ├── RadialMenu/     # 放射菜单
+│   │   ├── RadialMenu/     # 简约窗口
 │   │   ├── SearchInput/    # 搜索输入框
 │   │   ├── SettingsContent # 偏好设置面板
 │   │   ├── Toast/          # Toast 通知

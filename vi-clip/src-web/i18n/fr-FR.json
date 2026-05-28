@@ -143,7 +143,7 @@
       "startup": "Paramètre de démarrage mis à jour",
       "minimizeToTray": "Paramètre de réduction mis à jour",
       "shortcut": "Raccourci mis à jour",
-      "radialMenu": "Paramètre du menu radial mis à jour",
+      "radialMenu": "Paramètre de la fenêtre compacte mis à jour",
       "clickMode": "Mode de clic mis à jour",
       "retention": "Durée de conservation mise à jour",
       "engine": "Moteur de traduction modifié",
@@ -233,6 +233,7 @@
     "off": "OFF"
   },
   "radialMenu": {
+    "search": "Rechercher...",
     "empty": "Aucun élément"
   },
   "contextMenu": {

@@ -143,7 +143,7 @@
       "startup": "Configuração de inicialização atualizada",
       "minimizeToTray": "Configuração de minimizar atualizada",
       "shortcut": "Tecla de atalho atualizada",
-      "radialMenu": "Configuração do menu radial atualizada",
+      "radialMenu": "Configuração da janela compacta atualizada",
       "clickMode": "Modo de clique atualizado",
       "retention": "Período de retenção atualizado",
       "engine": "Mecanismo de tradução alterado",
@@ -233,6 +233,7 @@
     "off": "OFF"
   },
   "radialMenu": {
+    "search": "Pesquisar...",
     "empty": "Nenhum item"
   },
   "contextMenu": {

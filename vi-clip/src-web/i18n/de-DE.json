@@ -143,7 +143,7 @@
       "startup": "Autostart-Einstellung aktualisiert",
       "minimizeToTray": "Taskleisten-Einstellung aktualisiert",
       "shortcut": "Tastenkürzel aktualisiert",
-      "radialMenu": "Radialmenü-Einstellung aktualisiert",
+      "radialMenu": "Compact-Window-Einstellung aktualisiert",
       "clickMode": "Klickmodus aktualisiert",
       "retention": "Aufbewahrungsdauer aktualisiert",
       "engine": "Übersetzungsengine geändert",
@@ -233,6 +233,7 @@
     "off": "AUS"
   },
   "radialMenu": {
+    "search": "Suchen...",
     "empty": "Keine Elemente"
   },
   "contextMenu": {

@@ -143,7 +143,7 @@
       "startup": "Tetapan permulaan dikemas kini",
       "minimizeToTray": "Tetapan minimakan ke dulang dikemas kini",
       "shortcut": "Kunci pintasan dikemas kini",
-      "radialMenu": "Tetapan menu radial dikemas kini",
+      "radialMenu": "Tetapan tetingkap kompak dikemas kini",
       "clickMode": "Mod klik dikemas kini",
       "retention": "Tempoh simpanan dikemas kini",
       "engine": "Enjin terjemahan ditukar",
@@ -233,6 +233,7 @@
     "off": "TIDAK AKTIF"
   },
   "radialMenu": {
+    "search": "Cari...",
     "empty": "Tiada item"
   },
   "contextMenu": {

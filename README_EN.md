@@ -25,7 +25,7 @@ Clipboard Manager · Quick Phrases · Multi-Engine Translation · Image Preview
 
 ## Overview
 
-ViClip is a lightweight desktop productivity suite that appears as a floating window and minimizes to the system tray when closed. It integrates clipboard history management, quick phrases, multi-engine translation, radial menu, and image preview into one seamless workflow.
+ViClip is a lightweight desktop productivity suite that appears as a floating window and minimizes to the system tray when closed. It integrates clipboard history management, quick phrases, multi-engine translation, compact window, and image preview into one seamless workflow.
 
 ## Features
 
@@ -63,7 +63,7 @@ ViClip is a lightweight desktop productivity suite that appears as a floating wi
 - Local SQLite caching of translation results to avoid redundant requests
 - Custom proxy server support
 
-### Radial Menu
+### Compact Window
 
 - `Ctrl + Alt + Right Click` to summon a popup at cursor position
 - Contains Clipboard, Quick Phrases, and Translation tabs
@@ -191,7 +191,7 @@ vi-clip/
 ├── src-web/                # Frontend source
 │   ├── components/         # React components
 │   │   ├── ImagePreview/   # Image preview window
-│   │   ├── RadialMenu/     # Radial popup menu
+│   │   ├── RadialMenu/     # Compact window popup
 │   │   ├── SearchInput/    # Search input
 │   │   ├── SettingsContent # Preferences panel
 │   │   ├── Toast/          # Toast notification

@@ -143,7 +143,7 @@
       "startup": "起動時の設定を更新しました",
       "minimizeToTray": "トレイ最小化設定を更新しました",
       "shortcut": "ショートカットキーを更新しました",
-      "radialMenu": "ラジアルメニュー設定を更新しました",
+      "radialMenu": "コンパクトウィンドウ設定を更新しました",
       "clickMode": "クリックモードを更新しました",
       "retention": "保持期間を更新しました",
       "engine": "翻訳エンジンを変更しました",
@@ -233,6 +233,7 @@
     "off": "オフ"
   },
   "radialMenu": {
+    "search": "検索...",
     "empty": "アイテムがありません"
   },
   "contextMenu": {

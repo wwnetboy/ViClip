@@ -144,7 +144,7 @@
       "startup": "开机时自动运行已更新",
       "minimizeToTray": "启动时最小化到托盘已更新",
       "shortcut": "快捷键已更新",
-      "radialMenu": "快捷粘贴设置已更新",
+      "radialMenu": "简约窗口设置已更新",
       "clickMode": "复制剪切板内容方式已更新",
       "retention": "保留时长已更新",
       "engine": "翻译引擎已切换",
@@ -269,6 +269,7 @@
     "off": "已关闭"
   },
   "radialMenu": {
+    "search": "搜索...",
     "empty": "暂无内容"
   },
   "contextMenu": {

@@ -144,7 +144,7 @@
       "startup": "Startup setting updated",
       "minimizeToTray": "Minimize to tray setting updated",
       "shortcut": "Shortcut key updated",
-      "radialMenu": "Radial menu setting updated",
+      "radialMenu": "Compact window setting updated",
       "clickMode": "Click mode updated",
       "retention": "Retention period updated",
       "engine": "Translation engine changed",
@@ -268,6 +268,7 @@
     "off": "OFF"
   },
   "radialMenu": {
+    "search": "Search...",
     "empty": "No items"
   },
   "contextMenu": {

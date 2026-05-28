@@ -143,7 +143,7 @@
       "startup": "開機時自動執行已更新",
       "minimizeToTray": "啟動時最小化到系統匣已更新",
       "shortcut": "快捷鍵已更新",
-      "radialMenu": "快捷貼上設定已更新",
+      "radialMenu": "簡約視窗設定已更新",
       "clickMode": "複製剪貼簿內容方式已更新",
       "retention": "保留時長已更新",
       "engine": "翻譯引擎已切換",
@@ -233,6 +233,7 @@
     "off": "已關閉"
   },
   "radialMenu": {
+    "search": "搜尋...",
     "empty": "暫無內容"
   },
   "contextMenu": {

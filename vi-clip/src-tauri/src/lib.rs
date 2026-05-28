@@ -399,7 +399,7 @@ pub fn run() {
 
             shortcut::install_mouse_hook(app.handle());
 
-            // Create hidden radial menu popup window
+            // Create hidden compact window popup
             {
                 let radial = build_window_with_retry(
                     app,

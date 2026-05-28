@@ -143,7 +143,7 @@
       "startup": "Đã cập nhật cài đặt khởi động",
       "minimizeToTray": "Đã cập nhật cài đặt thu nhỏ",
       "shortcut": "Đã cập nhật phím tắt",
-      "radialMenu": "Đã cập nhật cài đặt menu radial",
+      "radialMenu": "Đã cập nhật cài đặt cửa sổ nhỏ gọn",
       "clickMode": "Đã cập nhật chế độ click",
       "retention": "Đã cập nhật thời gian lưu",
       "engine": "Đã đổi công cụ dịch",
@@ -233,6 +233,7 @@
     "off": "TẮT"
   },
   "radialMenu": {
+    "search": "Tìm kiếm...",
     "empty": "Không có mục nào"
   },
   "contextMenu": {

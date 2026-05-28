@@ -143,7 +143,7 @@
       "startup": "시작 설정이 업데이트되었습니다",
       "minimizeToTray": "트레이 최소화 설정이 업데이트되었습니다",
       "shortcut": "단축키가 업데이트되었습니다",
-      "radialMenu": "래디얼 메뉴 설정이 업데이트되었습니다",
+      "radialMenu": "컴팩트 창 설정이 업데이트되었습니다",
       "clickMode": "클릭 모드가 업데이트되었습니다",
       "retention": "보관 기간이 업데이트되었습니다",
       "engine": "번역 엔진이 변경되었습니다",
@@ -233,6 +233,7 @@
     "off": "꺼짐"
   },
   "radialMenu": {
+    "search": "검색...",
     "empty": "항목 없음"
   },
   "contextMenu": {

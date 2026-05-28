@@ -23,17 +23,24 @@ export default function RadialMenu() {
   const [selectedItemId, setSelectedItemId] = useState<string | null>(null);
   const [clipboardCategory, setClipboardCategory] = useState<ClipType>("all");
   const [phraseGroupId, setPhraseGroupId] = useState<string | null>(null);
+  const [searchQuery, setSearchQuery] = useState("");
+  const [searchExpanded, setSearchExpanded] = useState(false);
 
   const showTimestampRef = useRef(0);
   const selectedItemIdRef = useRef<string | null>(null);
   const activeTabRef = useRef<TabKey>("clipboard");
   const clipboardCategoryRef = useRef<ClipType>("all");
   const phraseGroupIdRef = useRef<string | null>(null);
+  const searchExpandedRef = useRef(false);
+  const searchQueryRef = useRef("");
+  const searchInputRef = useRef<HTMLInputElement>(null);
 
   useEffect(() => { selectedItemIdRef.current = selectedItemId; }, [selectedItemId]);
   useEffect(() => { activeTabRef.current = activeTab; }, [activeTab]);
   useEffect(() => { clipboardCategoryRef.current = clipboardCategory; }, [clipboardCategory]);
   useEffect(() => { phraseGroupIdRef.current = phraseGroupId; }, [phraseGroupId]);
+  useEffect(() => { searchExpandedRef.current = searchExpanded; }, [searchExpanded]);
+  useEffect(() => { searchQueryRef.current = searchQuery; }, [searchQuery]);
 
   useThemeSync();
 
@@ -167,7 +174,16 @@ export default function RadialMenu() {
 
     const handleKeyDown = (e: KeyboardEvent) => {
       if (e.key === "Escape") {
-        hide();
+        if (searchExpandedRef.current && searchQueryRef.current) {
+          setSearchQuery("");
+          searchQueryRef.current = "";
+          searchInputRef.current?.focus();
+        } else if (searchExpandedRef.current) {
+          setSearchExpanded(false);
+          searchExpandedRef.current = false;
+        } else {
+          hide();
+        }
       }
     };
 
@@ -213,9 +229,13 @@ export default function RadialMenu() {
       : records.filter((r) => r.type === clipboardCategory),
     [records, clipboardCategory]);
 
-  const items = useMemo(() =>
-    activeTab === "clipboard"
-      ? filteredRecords.slice(0, MAX_ITEMS).map((r) => ({
+  const items = useMemo(() => {
+    const query = searchQuery.trim().toLowerCase();
+    return activeTab === "clipboard"
+      ? (query
+          ? filteredRecords.filter((r) => r.type !== "image" && r.content.toLowerCase().includes(query))
+          : filteredRecords
+        ).slice(0, MAX_ITEMS).map((r) => ({
           id: r.id,
           content: r.type === "image"
             ? `[${t("clipboard.image")}]`
@@ -225,13 +245,19 @@ export default function RadialMenu() {
           type: r.type,
           createdAt: r.created_at,
         }))
-      : phrases.map((p) => ({
+      : (query
+          ? phrases.filter((p) =>
+              p.content.toLowerCase().includes(query)
+              || (p.title && p.title.toLowerCase().includes(query))
+            )
+          : phrases
+        ).map((p) => ({
           id: p.id,
           content: p.content,
           type: "phrase" as string,
           title: p.title,
-        })),
-    [activeTab, filteredRecords, phrases, t]);
+        }));
+  }, [activeTab, filteredRecords, phrases, searchQuery, t]);
 
   const categories = activeTab === "clipboard"
     ? [
@@ -250,7 +276,14 @@ export default function RadialMenu() {
 
   return (
     <div className={`radial-menu-overlay${visible ? "" : " radial-menu-hidden"}`}>
-      <div className="radial-menu-popup">
+      <div
+        className="radial-menu-popup"
+        onClick={() => {
+          if (searchExpandedRef.current) {
+            setSearchExpanded(false);
+          }
+        }}
+      >
         <div className="radial-menu-nav">
           {(["clipboard", "phrases"] as TabKey[]).map((tab) => (
             <button
@@ -280,6 +313,39 @@ export default function RadialMenu() {
             ))}
           </div>
         )}
+
+        <div
+          className="radial-menu-search"
+          onClick={(e) => e.stopPropagation()}
+        >
+          <div className={`radial-menu-search-pill${searchExpanded ? " expanded" : ""}`}>
+            <button
+              className="radial-menu-search-icon"
+              onClick={() => {
+                if (searchExpanded) {
+                  setSearchExpanded(false);
+                  setSearchQuery("");
+                } else {
+                  setSearchExpanded(true);
+                  setTimeout(() => searchInputRef.current?.focus(), 100);
+                }
+              }}
+            >
+              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                <circle cx="11" cy="11" r="8"/>
+                <line x1="21" y1="21" x2="16.65" y2="16.65"/>
+              </svg>
+            </button>
+            <input
+              ref={searchInputRef}
+              className="radial-menu-search-input"
+              type="text"
+              placeholder={t("radialMenu.search")}
+              value={searchQuery}
+              onChange={(e) => setSearchQuery(e.target.value)}
+            />
+          </div>
+        </div>
 
         <div className="radial-menu-list" data-radial-list>
           {items.length === 0 ? (

@@ -1,4 +1,4 @@
-/* === Radial Menu === */
+/* === Compact Window === */
 .radial-menu-overlay {
   position: fixed;
   inset: 0;
@@ -15,6 +15,7 @@
 }
 
 .radial-menu-popup {
+  position: relative;
   width: 100%;
   height: 100%;
   background: var(--card-inner-bg);
@@ -253,6 +254,102 @@
 
 [data-theme="dark"] .radial-menu-item-remark, [data-theme="dark-solid"] .radial-menu-item-remark, [data-theme="deep-blue"] .radial-menu-item-remark {
   color: rgba(255, 255, 255, 0.4);
+}
+
+/* --- Search --- */
+.radial-menu-search {
+  position: absolute;
+  left: 10px;
+  right: 10px;
+  bottom: 10px;
+  z-index: 10;
+  display: flex;
+  justify-content: flex-end;
+}
+
+.radial-menu-search-pill {
+  display: flex;
+  align-items: center;
+  height: 34px;
+  width: 34px;
+  border-radius: 17px;
+  background: rgba(255, 255, 255, 0.12);
+  backdrop-filter: blur(40px) saturate(180%);
+  -webkit-backdrop-filter: blur(40px) saturate(180%);
+  border: 0.5px solid rgba(255, 255, 255, 0.2);
+  box-shadow: 0 2px 12px rgba(0, 0, 0, 0.1), inset 0 0.5px 0 rgba(255, 255, 255, 0.2);
+  transition: width 0.35s cubic-bezier(0.4, 0, 0.2, 1), border-radius 0.35s ease, background 0.3s ease;
+  overflow: hidden;
+  cursor: pointer;
+}
+
+.radial-menu-search-pill.expanded {
+  width: 100%;
+  cursor: default;
+  background: rgba(255, 255, 255, 0.15);
+}
+
+[data-theme="dark"] .radial-menu-search-pill,
+[data-theme="dark-solid"] .radial-menu-search-pill,
+[data-theme="deep-blue"] .radial-menu-search-pill {
+  background: rgba(255, 255, 255, 0.05);
+  border-color: rgba(255, 255, 255, 0.1);
+  box-shadow: 0 2px 12px rgba(0, 0, 0, 0.25), inset 0 0.5px 0 rgba(255, 255, 255, 0.08);
+}
+
+[data-theme="dark"] .radial-menu-search-pill.expanded,
+[data-theme="dark-solid"] .radial-menu-search-pill.expanded,
+[data-theme="deep-blue"] .radial-menu-search-pill.expanded {
+  background: rgba(255, 255, 255, 0.08);
+}
+
+.radial-menu-search-icon {
+  width: 34px;
+  height: 34px;
+  min-width: 34px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  border: none;
+  background: transparent;
+  color: var(--text-secondary);
+  cursor: pointer;
+  flex-shrink: 0;
+  transition: color 0.15s;
+}
+
+.radial-menu-search-pill.expanded .radial-menu-search-icon {
+  color: var(--text-primary);
+}
+
+.radial-menu-search-icon svg {
+  width: 14px;
+  height: 14px;
+  opacity: 0.7;
+}
+
+.radial-menu-search-input {
+  flex: 1;
+  height: 100%;
+  border: none;
+  outline: none;
+  background: transparent;
+  color: var(--text-primary);
+  font-family: var(--font);
+  font-size: var(--text-sm);
+  padding: 0 10px 0 0;
+  opacity: 0;
+  transition: opacity 0.15s ease 0.1s;
+  pointer-events: none;
+}
+
+.radial-menu-search-pill.expanded .radial-menu-search-input {
+  opacity: 1;
+  pointer-events: auto;
+}
+
+.radial-menu-search-input::placeholder {
+  color: var(--text-tertiary);
 }
 
 /* --- Empty State --- */
