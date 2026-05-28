@@ -1,6 +1,6 @@
 [package]
 name = "vi-clip"
-version = "1.0.6"
+version = "1.0.7"
 description = "ViClip - PC clipboard manager, quick phrases, and translation tool"
 authors = ["wwnetboy"]
 license = "MIT"
@@ -46,6 +46,9 @@ tauri-plugin-process = "2.3.1"
 open = "5"
 tauri-plugin-autostart = "2.5.1"
 xxhash-rust = { version = "0.8", features = ["xxh3"] }
+md-5 = "0.10"
+hmac = "0.12"
+sha2 = "0.10"
 
 [profile.release]
 opt-level = "z"

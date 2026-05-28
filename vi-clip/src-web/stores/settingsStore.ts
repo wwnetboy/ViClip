@@ -20,6 +20,14 @@ interface SettingsState {
   model: string;
   googleApiKey: string;
   translateProxy: string;
+  baiduAppid: string;
+  baiduSecretKey: string;
+  youdaoAppKey: string;
+  youdaoAppSecret: string;
+  tencentSecretId: string;
+  tencentSecretKey: string;
+  volctransAccessKeyId: string;
+  volctransSecretAccessKey: string;
   language: string;
   shortcutKey: string;
   radialMenuEnabled: boolean;
@@ -44,6 +52,14 @@ export const useSettingsStore = create<SettingsState>((set) => ({
   model: "",
   googleApiKey: "",
   translateProxy: "",
+  baiduAppid: "",
+  baiduSecretKey: "",
+  youdaoAppKey: "",
+  youdaoAppSecret: "",
+  tencentSecretId: "",
+  tencentSecretKey: "",
+  volctransAccessKeyId: "",
+  volctransSecretAccessKey: "",
   language: "zh-CN",
   shortcutKey: "Alt+V",
   radialMenuEnabled: true,
@@ -65,7 +81,15 @@ export const useSettingsStore = create<SettingsState>((set) => ({
         model: settings.ai_model || "",
         googleApiKey: settings.google_api_key || "",
         translateProxy: settings.translate_proxy || "",
-        language: settings.language || "zh-CN",
+        baiduAppid: settings.baidu_appid || "",
+        baiduSecretKey: settings.baidu_secret_key || "",
+        youdaoAppKey: settings.youdao_app_key || "",
+        youdaoAppSecret: settings.youdao_app_secret || "",
+        tencentSecretId: settings.tencent_secret_id || "",
+        tencentSecretKey: settings.tencent_secret_key || "",
+        volctransAccessKeyId: settings.volctrans_access_key_id || "",
+        volctransSecretAccessKey: settings.volctrans_secret_access_key || "",
+        language: settings.language === "en" ? "en-US" : (settings.language || "zh-CN"),
         shortcutKey: settings.shortcut_key || "Alt+V",
         radialMenuEnabled: settings.radial_menu_enabled !== "0",
         toastEnabled: settings.toast_enabled !== "0",

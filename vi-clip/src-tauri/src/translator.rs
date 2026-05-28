@@ -1,4 +1,6 @@
+use hmac::{Hmac, Mac};
 use serde::{Deserialize, Serialize};
+use sha2::{Digest, Sha256};
 use std::sync::{Mutex, OnceLock};
 use tauri::Manager;
 
@@ -89,10 +91,13 @@ pub async fn translate(
         }
     }
 
-    let result = if engine == "ai" {
-        translate_ai(&app, &text, &source_lang, &target_lang).await?
-    } else {
-        translate_google(&app, &text, &source_lang, &target_lang).await?
+    let result = match engine.as_str() {
+        "ai" => translate_ai(&app, &text, &source_lang, &target_lang).await?,
+        "baidu" => translate_baidu(&app, &text, &target_lang).await?,
+        "youdao" => translate_youdao(&app, &text, &target_lang).await?,
+        "tencent" => translate_tencent(&app, &text, &target_lang).await?,
+        "volctrans" => translate_volctrans(&app, &text, &target_lang).await?,
+        _ => translate_google(&app, &text, &source_lang, &target_lang).await?,
     };
 
     // Save to history/cache
@@ -264,6 +269,366 @@ fn fmt_reqwest_error(err: &reqwest::Error) -> String {
     } else {
         format!("Google Translate request failed: {}. The free API may be unstable. Consider using an API key or switching to AI translation in Settings.", err)
     }
+}
+
+// ── HMAC-SHA256 helper ──
+
+type HmacSha256 = Hmac<Sha256>;
+
+fn hmac_sha256(key: &[u8], msg: &[u8]) -> Vec<u8> {
+    let mut mac = HmacSha256::new_from_slice(key).expect("HMAC key size");
+    mac.update(msg);
+    mac.finalize().into_bytes().to_vec()
+}
+
+fn hex(bytes: &[u8]) -> String {
+    bytes.iter().map(|b| format!("{:02x}", b)).collect()
+}
+
+// ── Language code mapping ──
+
+fn to_youdao_lang(code: &str) -> &str {
+    match code {
+        "zh" => "zh-CHS",
+        _ => code,
+    }
+}
+
+// ── Random salt ──
+
+fn random_salt() -> String {
+    std::time::SystemTime::now()
+        .duration_since(std::time::UNIX_EPOCH)
+        .unwrap_or_default()
+        .as_millis()
+        .to_string()
+}
+
+// ═══════════════════════ BAIDU ═══════════════════════
+
+async fn translate_baidu(
+    app: &tauri::AppHandle,
+    text: &str,
+    target_lang: &str,
+) -> Result<TranslateResponse, String> {
+    let appid = crate::db::get_setting_sync(app, "baidu_appid").unwrap_or_default();
+    let secret_key = crate::db::get_setting_sync(app, "baidu_secret_key").unwrap_or_default();
+
+    if appid.is_empty() || secret_key.is_empty() {
+        return Err("Baidu translation not configured. Please fill in the App ID and Secret Key in Settings.".to_string());
+    }
+
+    let salt = random_salt();
+    let sign_str = format!("{}{}{}{}", appid, text, salt, secret_key);
+    let sign = format!("{:x}", md5::Md5::digest(sign_str.as_bytes()));
+
+    let resp = http_client()
+        .get("https://fanyi-api.baidu.com/api/trans/vip/translate")
+        .query(&[
+            ("q", text),
+            ("from", "auto"),
+            ("to", target_lang),
+            ("appid", appid.as_str()),
+            ("salt", salt.as_str()),
+            ("sign", sign.as_str()),
+        ])
+        .send()
+        .await
+        .map_err(|e| format!("Baidu translation request failed: {}", e))?;
+
+    let status = resp.status();
+    let body = resp.text().await.map_err(|e| format!("Failed to read Baidu response: {}", e))?;
+
+    if !status.is_success() {
+        return Err(format!("Baidu translation HTTP {}: {}", status.as_u16(), &body[..body.len().min(80)]));
+    }
+
+    let json: serde_json::Value =
+        serde_json::from_str(&body).map_err(|e| format!("Failed to parse Baidu response: {}", e))?;
+
+    if let Some(err_code) = json.get("error_code") {
+        let err_msg = json["error_msg"].as_str().unwrap_or("Unknown error");
+        return Err(format!("Baidu translation error {}: {}", err_code, err_msg));
+    }
+
+    let translated = json["trans_result"][0]["dst"]
+        .as_str()
+        .ok_or("Baidu translation returned an unexpected response.")?
+        .to_string();
+
+    Ok(TranslateResponse {
+        source_text: text.to_string(),
+        target_text: translated,
+        engine: "baidu".to_string(),
+    })
+}
+
+// ═══════════════════════ YOUDAO ═══════════════════════
+
+async fn translate_youdao(
+    app: &tauri::AppHandle,
+    text: &str,
+    target_lang: &str,
+) -> Result<TranslateResponse, String> {
+    let app_key = crate::db::get_setting_sync(app, "youdao_app_key").unwrap_or_default();
+    let app_secret = crate::db::get_setting_sync(app, "youdao_app_secret").unwrap_or_default();
+
+    if app_key.is_empty() || app_secret.is_empty() {
+        return Err("Youdao translation not configured. Please fill in the App Key and App Secret in Settings.".to_string());
+    }
+
+    let salt = random_salt();
+    let curtime = std::time::SystemTime::now()
+        .duration_since(std::time::UNIX_EPOCH)
+        .unwrap_or_default()
+        .as_secs()
+        .to_string();
+    let sign_str = format!("{}{}{}{}{}", app_key, text, salt, curtime, app_secret);
+    let sign = format!("{:x}", md5::Md5::digest(sign_str.as_bytes()));
+
+    let from_lang = if text.chars().any(|c| c > '\u{007f}') { "zh-CHS" } else { "en" };
+    // If user selected zh, use zh-CHS for youdao
+    let to_lang = to_youdao_lang(target_lang);
+
+    let resp = http_client()
+        .post("https://openapi.youdao.com/api")
+        .form(&[
+            ("q", text),
+            ("from", from_lang),
+            ("to", to_lang),
+            ("appKey", app_key.as_str()),
+            ("salt", salt.as_str()),
+            ("sign", sign.as_str()),
+            ("curtime", curtime.as_str()),
+        ])
+        .send()
+        .await
+        .map_err(|e| format!("Youdao translation request failed: {}", e))?;
+
+    let body = resp.text().await.map_err(|e| format!("Failed to read Youdao response: {}", e))?;
+
+    let json: serde_json::Value =
+        serde_json::from_str(&body).map_err(|e| format!("Failed to parse Youdao response: {}", e))?;
+
+    let error_code = json["errorCode"].as_str().unwrap_or("");
+    if error_code != "0" {
+        return Err(format!("Youdao translation error {}: {}", error_code, &body[..body.len().min(80)]));
+    }
+
+    let translated = json["translation"][0]
+        .as_str()
+        .ok_or("Youdao translation returned an unexpected response.")?
+        .to_string();
+
+    Ok(TranslateResponse {
+        source_text: text.to_string(),
+        target_text: translated,
+        engine: "youdao".to_string(),
+    })
+}
+
+// ═══════════════════════ TENCENT ═══════════════════════
+
+fn sign_tc3(secret_id: &str, secret_key: &str, payload: &str, timestamp: i64) -> String {
+    let date = chrono::Utc::now().format("%Y-%m-%d").to_string();
+    let service = "tmt";
+    let host = "tmt.tencentcloudapi.com";
+
+    let canonical_headers = format!("content-type:application/json\nhost:{}\n", host);
+    let signed_headers = "content-type;host";
+    let hashed_payload = format!("{:x}", Sha256::digest(payload.as_bytes()));
+
+    let canonical_request = format!(
+        "POST\n/\n\n{}\n{}\n{}",
+        canonical_headers, signed_headers, hashed_payload
+    );
+    let hashed_canonical_request = format!("{:x}", Sha256::digest(canonical_request.as_bytes()));
+
+    let algorithm = "TC3-HMAC-SHA256";
+    let credential_scope = format!("{}/{}/tc3_request", date, service);
+    let string_to_sign = format!(
+        "{}\n{}\n{}\n{}",
+        algorithm, timestamp, credential_scope, hashed_canonical_request
+    );
+
+    let secret_date = hmac_sha256(format!("TC3{}", secret_key).as_bytes(), date.as_bytes());
+    let secret_service = hmac_sha256(&secret_date, service.as_bytes());
+    let secret_signing = hmac_sha256(&secret_service, b"tc3_request");
+    let signature = hex(&hmac_sha256(&secret_signing, string_to_sign.as_bytes()));
+
+    format!(
+        "TC3-HMAC-SHA256 Credential={}/{}, SignedHeaders={}, Signature={}",
+        secret_id, credential_scope, signed_headers, signature
+    )
+}
+
+async fn translate_tencent(
+    app: &tauri::AppHandle,
+    text: &str,
+    target_lang: &str,
+) -> Result<TranslateResponse, String> {
+    let secret_id = crate::db::get_setting_sync(app, "tencent_secret_id").unwrap_or_default();
+    let secret_key = crate::db::get_setting_sync(app, "tencent_secret_key").unwrap_or_default();
+
+    if secret_id.is_empty() || secret_key.is_empty() {
+        return Err("Tencent Cloud translation not configured. Please fill in the Secret ID and Secret Key in Settings.".to_string());
+    }
+
+    let payload = serde_json::json!({
+        "SourceText": text,
+        "Source": "auto",
+        "Target": target_lang,
+        "ProjectId": 0,
+    })
+    .to_string();
+
+    let timestamp = chrono::Utc::now().timestamp();
+    let authorization = sign_tc3(&secret_id, &secret_key, &payload, timestamp);
+
+    let resp = http_client()
+        .post("https://tmt.tencentcloudapi.com")
+        .header("Authorization", &authorization)
+        .header("Content-Type", "application/json")
+        .header("Host", "tmt.tencentcloudapi.com")
+        .header("X-TC-Action", "TextTranslate")
+        .header("X-TC-Version", "2018-03-21")
+        .header("X-TC-Timestamp", timestamp.to_string())
+        .header("X-TC-Region", "ap-guangzhou")
+        .body(payload)
+        .send()
+        .await
+        .map_err(|e| format!("Tencent translation request failed: {}", e))?;
+
+    let body = resp.text().await.map_err(|e| format!("Failed to read Tencent response: {}", e))?;
+
+    let json: serde_json::Value =
+        serde_json::from_str(&body).map_err(|e| format!("Failed to parse Tencent response: {}", e))?;
+
+    if let Some(err) = json["Response"]["Error"].as_object() {
+        return Err(format!(
+            "Tencent translation error [{}]: {}",
+            err["Code"].as_str().unwrap_or(""),
+            err["Message"].as_str().unwrap_or("Unknown error")
+        ));
+    }
+
+    let translated = json["Response"]["TargetText"]
+        .as_str()
+        .ok_or("Tencent translation returned an unexpected response.")?
+        .to_string();
+
+    Ok(TranslateResponse {
+        source_text: text.to_string(),
+        target_text: translated,
+        engine: "tencent".to_string(),
+    })
+}
+
+// ═══════════════════════ VOLCTRANS ═══════════════════════
+
+fn sign_volctrans(access_key_id: &str, secret_access_key: &str, payload: &str) -> String {
+    let now = chrono::Utc::now();
+    let date = now.format("%Y%m%d").to_string();
+    let timestamp = now.format("%Y%m%dT%H%M%SZ").to_string();
+    let region = "cn-north-1";
+    let service = "translate";
+
+    // Hashed payload (lowercase hex)
+    let hashed_payload = format!("{:x}", Sha256::digest(payload.as_bytes()));
+
+    // Canonical request
+    let canonical_uri = "/";
+    let canonical_querystring = "Action=TranslateText&Version=2020-07-01";
+    let canonical_headers = format!(
+        "content-type:application/json\nhost:open.volcengineapi.com\nx-date:{}\n",
+        timestamp
+    );
+    let signed_headers = "content-type;host;x-date";
+
+    let canonical_request = format!(
+        "POST\n{}\n{}\n{}\n{}\n{}",
+        canonical_uri, canonical_querystring, canonical_headers, signed_headers, hashed_payload
+    );
+    let hashed_canonical_request = format!("{:x}", Sha256::digest(canonical_request.as_bytes()));
+
+    // String to sign
+    let algorithm = "HMAC-SHA256";
+    let credential_scope = format!("{}/{}/{}/request", date, region, service);
+    let string_to_sign = format!(
+        "{}\n{}\n{}\n{}",
+        algorithm, timestamp, credential_scope, hashed_canonical_request
+    );
+
+    // Derive signing key
+    let k_date = hmac_sha256(secret_access_key.as_bytes(), date.as_bytes());
+    let k_region = hmac_sha256(&k_date, region.as_bytes());
+    let k_service = hmac_sha256(&k_region, service.as_bytes());
+    let k_signing = hmac_sha256(&k_service, b"request");
+
+    let signature = hex(&hmac_sha256(&k_signing, string_to_sign.as_bytes()));
+
+    format!(
+        "HMAC-SHA256 Credential={}/{}, SignedHeaders={}, Signature={}",
+        access_key_id, credential_scope, signed_headers, signature
+    )
+}
+
+async fn translate_volctrans(
+    app: &tauri::AppHandle,
+    text: &str,
+    target_lang: &str,
+) -> Result<TranslateResponse, String> {
+    let access_key_id = crate::db::get_setting_sync(app, "volctrans_access_key_id").unwrap_or_default();
+    let secret_access_key = crate::db::get_setting_sync(app, "volctrans_secret_access_key").unwrap_or_default();
+
+    if access_key_id.is_empty() || secret_access_key.is_empty() {
+        return Err("Volctrans translation not configured. Please fill in the Access Key ID and Secret Access Key in Settings.".to_string());
+    }
+
+    let payload = serde_json::json!({
+        "TargetLanguage": target_lang,
+        "TextList": [text],
+    })
+    .to_string();
+
+    let authorization = sign_volctrans(&access_key_id, &secret_access_key, &payload);
+    let now = chrono::Utc::now();
+    let x_date = now.format("%Y%m%dT%H%M%SZ").to_string();
+
+    let resp = http_client()
+        .post("https://open.volcengineapi.com?Action=TranslateText&Version=2020-07-01")
+        .header("Authorization", &authorization)
+        .header("Content-Type", "application/json")
+        .header("Host", "open.volcengineapi.com")
+        .header("X-Date", &x_date)
+        .body(payload)
+        .send()
+        .await
+        .map_err(|e| format!("Volctrans request failed: {}", e))?;
+
+    let body = resp.text().await.map_err(|e| format!("Failed to read Volctrans response: {}", e))?;
+
+    let json: serde_json::Value =
+        serde_json::from_str(&body).map_err(|e| format!("Failed to parse Volctrans response: {}", e))?;
+
+    if let Some(err) = json["ResponseMetadata"]["Error"].as_object() {
+        return Err(format!(
+            "Volctrans error [{}]: {}",
+            err["Code"].as_str().unwrap_or(""),
+            err["Message"].as_str().unwrap_or("Unknown error")
+        ));
+    }
+
+    let translated = json["TranslationList"][0]["Translation"]
+        .as_str()
+        .ok_or("Volctrans returned an unexpected response.")?
+        .to_string();
+
+    Ok(TranslateResponse {
+        source_text: text.to_string(),
+        target_text: translated,
+        engine: "volctrans".to_string(),
+    })
 }
 
 

@@ -12,7 +12,7 @@
 
 **Lightweight Desktop Productivity Suite**
 
-Clipboard Manager · Quick Phrases · AI Translation · Image Preview
+Clipboard Manager · Quick Phrases · Multi-Engine Translation · Image Preview
 
 ![License](https://img.shields.io/badge/license-MIT-blue.svg)
 ![Platform](https://img.shields.io/badge/platform-Windows%2010+-brightgreen.svg)
@@ -25,7 +25,7 @@ Clipboard Manager · Quick Phrases · AI Translation · Image Preview
 
 ## Overview
 
-ViClip is a lightweight desktop productivity suite that appears as a floating window and minimizes to the system tray when closed. It integrates clipboard history management, quick phrases, AI translation, radial menu, and image preview into one seamless workflow.
+ViClip is a lightweight desktop productivity suite that appears as a floating window and minimizes to the system tray when closed. It integrates clipboard history management, quick phrases, multi-engine translation, radial menu, and image preview into one seamless workflow.
 
 ## Features
 
@@ -56,6 +56,10 @@ ViClip is a lightweight desktop productivity suite that appears as a floating wi
 
 - **AI Translation**: OpenAI-compatible API format (supports `/v1/chat/completions`), customizable endpoint and model
 - **Google Translation**: Built-in free API ready out of the box; official API key also supported
+- **Baidu Translation**: Professional API, ideal for Chinese language scenarios
+- **Youdao Translation**: Multi-language pairs with stable domestic access
+- **Tencent Cloud TMT**: Tencent Cloud machine translation with billion-level corpus
+- **Volctrans**: ByteDance neural machine translation engine
 - Local SQLite caching of translation results to avoid redundant requests
 - Custom proxy server support
 
@@ -89,7 +93,7 @@ ViClip is a lightweight desktop productivity suite that appears as a floating wi
 | UI Styling | Pure CSS — iOS frosted glass + DWM acrylic backdrop |
 | State Management | [Zustand](https://zustand-demo.pmnd.rs/) |
 | Local Storage | SQLite (rusqlite, bundled) |
-| Internationalization | react-i18next (Simplified Chinese / English) |
+| Internationalization | react-i18next (17 languages) |
 | Desktop Capabilities | Global hotkey, mouse hook, clipboard monitor, input simulation, auto-start |
 
 ## Download
@@ -122,8 +126,8 @@ Go to the [Releases](https://github.com/wwnetboy/ViClip/releases) page to downlo
 
 1. Switch to the "Translation" tab
 2. Enter or paste the text to translate
-3. Select language direction and translation engine (AI / Google)
-4. For AI translation, configure the API endpoint and key in Preferences
+3. Select target language and translation engine (AI / Google / Baidu / Youdao / Tencent / Volctrans)
+4. For third-party engines, configure the corresponding API key in Preferences
 
 ### Tray Menu
 
@@ -195,7 +199,7 @@ vi-clip/
 │   ├── pages/              # Pages: Clipboard / Phrase / Translation
 │   ├── stores/             # Zustand state management
 │   ├── styles/             # CSS styles
-│   ├── i18n/               # Internationalization (zh-CN / en)
+│   ├── i18n/               # Internationalization (17 languages)
 │   └── types/              # TypeScript types
 ├── src-tauri/              # Tauri backend (Rust)
 │   ├── src/
@@ -204,7 +208,7 @@ vi-clip/
 │   │   ├── clipboard.rs    # Clipboard monitor (800ms polling)
 │   │   ├── paste.rs        # Paste (text/image/file)
 │   │   ├── shortcut.rs     # Global hotkey + mouse hook
-│   │   ├── translator.rs   # Translation engine (AI + Google)
+│   │   ├── translator.rs   # Translation engines (AI / Google / Baidu / Youdao / Tencent / Volctrans)
 │   │   ├── tray.rs         # System tray menu
 │   │   └── preview_lock.rs # Image preview aspect ratio lock
 │   └── Cargo.toml
@@ -212,14 +216,28 @@ vi-clip/
 └── package.json
 ```
 
-## License
+## Open Source
 
-This project is licensed under the [MIT License](LICENSE).
+ViClip is open sourced under the [MIT License](LICENSE), hosted on GitHub.
+
+### Contributing
+
+Contributions are welcome:
+
+- **Report Issues**: Submit bug reports or feature requests via [Issues](https://github.com/wwnetboy/ViClip/issues)
+- **Submit Code**: Fork the repo → create a branch → submit a PR
+- **Improve Docs**: Help improve the Wiki and translations
+
+### Built With
+
+| Project | Purpose |
+|:---|:---|
+| [Tauri](https://tauri.app/) | Desktop framework |
+| [React](https://react.dev/) | Frontend UI |
+| [react-i18next](https://react.i18next.com/) | Internationalization |
+| [Zustand](https://zustand-demo.pmnd.rs/) | State management |
+| [rusqlite](https://github.com/rusqlite/rusqlite) | SQLite database |
 
 ---
 
-<div align="center">
-
-If you find this project helpful, feel free to give it a Star!
-
-</div>
+If you find this project helpful, please give it a ⭐ Star!

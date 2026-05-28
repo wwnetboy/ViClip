@@ -10,7 +10,7 @@ pub struct TrayState {
 
 fn build_tray_menu(app: &AppHandle, lang: &str) -> Result<tauri::menu::Menu<tauri::Wry>, Box<dyn std::error::Error>> {
     let version = env!("CARGO_PKG_VERSION");
-    let is_cn = !lang.starts_with("en");
+    let is_cn = lang.starts_with("zh");
 
     let (website_text, version_text, update_text, guide_text, feedback_text, prefs_text, quit_text) = if is_cn {
         (
@@ -87,7 +87,7 @@ pub fn create_tray(app: &AppHandle) -> Result<(), Box<dyn std::error::Error>> {
                 "check_update" => {
                     let app_handle = app.clone();
                     let is_cn = crate::db::get_setting_sync(&app_handle, "language")
-                        .map(|l| !l.starts_with("en"))
+                        .map(|l| l.starts_with("zh"))
                         .unwrap_or(true);
                     tauri::async_runtime::spawn(async move {
                         let (title, msg) = match crate::updater::check_update().await {
@@ -166,6 +166,7 @@ pub fn create_tray(app: &AppHandle) -> Result<(), Box<dyn std::error::Error>> {
                         } else {
                             #[cfg(target_os = "windows")]
                             crate::paste::save_foreground_window();
+                            let _ = window.unminimize();
                             window.show().ok();
                             window.set_focus().ok();
                         }

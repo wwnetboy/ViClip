@@ -38,7 +38,22 @@ export function BasicSettingsSection({
 
   const languageOptions = [
     { value: "zh-CN", label: "简体中文" },
-    { value: "en", label: "English" },
+    { value: "zh-HK", label: "繁體中文（香港）" },
+    { value: "zh-TW", label: "繁體中文（台灣）" },
+    { value: "en-US", label: "English" },
+    { value: "ja-JP", label: "日本語" },
+    { value: "de-DE", label: "Deutsch" },
+    { value: "fr-FR", label: "Français" },
+    { value: "es-ES", label: "Español" },
+    { value: "it-IT", label: "Italiano" },
+    { value: "pt-BR", label: "Português (Brasil)" },
+    { value: "ru-RU", label: "Русский" },
+    { value: "ko-KR", label: "한국어" },
+    { value: "th-TH", label: "ไทย" },
+    { value: "vi-VN", label: "Tiếng Việt" },
+    { value: "id-ID", label: "Bahasa Indonesia" },
+    { value: "ms-MY", label: "Bahasa Melayu" },
+    { value: "hi-IN", label: "हिन्दी" },
   ];
 
   return (
