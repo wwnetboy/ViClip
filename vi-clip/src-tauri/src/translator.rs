@@ -57,6 +57,7 @@ pub struct TranslateResponse {
     pub source_text: String,
     pub target_text: String,
     pub engine: String,
+    pub detected_lang: Option<String>,
 }
 
 #[tauri::command]
@@ -87,6 +88,7 @@ pub async fn translate(
                 source_text: text,
                 target_text: cached_text,
                 engine,
+                detected_lang: None,
             });
         }
     }
@@ -178,6 +180,7 @@ async fn translate_ai(
         source_text: text.to_string(),
         target_text: translated,
         engine: "ai".to_string(),
+        detected_lang: None,
     })
 }
 
@@ -223,10 +226,13 @@ async fn translate_google(
             .ok_or("Google Translate free API returned an unexpected response. It may be temporarily unstable. Please retry or switch to AI translation in Settings.")?
             .to_string();
 
+        let detected = json.get(2).and_then(|v| v.as_str()).map(|s| s.to_string());
+
         return Ok(TranslateResponse {
             source_text: text.to_string(),
             target_text: translated,
             engine: "google".to_string(),
+            detected_lang: detected,
         });
     }
 
@@ -254,10 +260,15 @@ async fn translate_google(
         .ok_or("Google Cloud Translation returned an unexpected response. Please check your API key and try again.")?
         .to_string();
 
+    let detected = json["data"]["translations"][0]["detectedSourceLanguage"]
+        .as_str()
+        .map(|s| s.to_string());
+
     Ok(TranslateResponse {
         source_text: text.to_string(),
         target_text: translated,
         engine: "google".to_string(),
+        detected_lang: detected,
     })
 }
 
@@ -287,9 +298,42 @@ fn hex(bytes: &[u8]) -> String {
 
 // ── Language code mapping ──
 
+fn to_baidu_lang(code: &str) -> &str {
+    match code {
+        "zh-TW" => "cht",
+        "ja" => "jp",
+        "ko" => "kor",
+        "fr" => "fra",
+        "es" => "spa",
+        "ar" => "ara",
+        "vi" => "vie",
+        "ms" => "may",
+        "sv" => "swe",
+        "da" => "dan",
+        "fi" => "fin",
+        "ro" => "rom",
+        "he" => "heb",
+        "uk" => "ukr",
+        "no" => "nor",
+        "bg" => "bul",
+        "hr" => "hrv",
+        "sr" => "srp",
+        "tl" => "fil",
+        _ => code,
+    }
+}
+
 fn to_youdao_lang(code: &str) -> &str {
     match code {
         "zh" => "zh-CHS",
+        "zh-TW" => "zh-CHT",
+        _ => code,
+    }
+}
+
+fn to_volctrans_lang(code: &str) -> &str {
+    match code {
+        "zh-TW" => "zh-Hant",
         _ => code,
     }
 }
@@ -327,7 +371,7 @@ async fn translate_baidu(
         .query(&[
             ("q", text),
             ("from", "auto"),
-            ("to", target_lang),
+            ("to", to_baidu_lang(target_lang)),
             ("appid", appid.as_str()),
             ("salt", salt.as_str()),
             ("sign", sign.as_str()),
@@ -356,10 +400,13 @@ async fn translate_baidu(
         .ok_or("Baidu translation returned an unexpected response.")?
         .to_string();
 
+    let detected = json["from"].as_str().map(|s| s.to_string());
+
     Ok(TranslateResponse {
         source_text: text.to_string(),
         target_text: translated,
         engine: "baidu".to_string(),
+        detected_lang: detected,
     })
 }
 
@@ -383,8 +430,19 @@ async fn translate_youdao(
         .unwrap_or_default()
         .as_secs()
         .to_string();
-    let sign_str = format!("{}{}{}{}{}", app_key, text, salt, curtime, app_secret);
-    let sign = format!("{:x}", md5::Md5::digest(sign_str.as_bytes()));
+
+    // Youdao v3 sign: SHA256(appKey + truncate(q) + salt + curtime + appSecret)
+    // Truncation: if text > 20 chars → first10 + totalLen + last10, else full text
+    let sign_input = if text.chars().count() > 20 {
+        let total = text.chars().count();
+        let first10: String = text.chars().take(10).collect();
+        let last10: String = text.chars().skip(total - 10).collect();
+        format!("{}{}{}", first10, total, last10)
+    } else {
+        text.to_string()
+    };
+    let sign_str = format!("{}{}{}{}{}", app_key, sign_input, salt, curtime, app_secret);
+    let sign = format!("{:x}", Sha256::digest(sign_str.as_bytes()));
 
     let from_lang = if text.chars().any(|c| c > '\u{007f}') { "zh-CHS" } else { "en" };
     // If user selected zh, use zh-CHS for youdao
@@ -399,6 +457,7 @@ async fn translate_youdao(
             ("appKey", app_key.as_str()),
             ("salt", salt.as_str()),
             ("sign", sign.as_str()),
+            ("signType", "v3"),
             ("curtime", curtime.as_str()),
         ])
         .send()
@@ -424,6 +483,7 @@ async fn translate_youdao(
         source_text: text.to_string(),
         target_text: translated,
         engine: "youdao".to_string(),
+        detected_lang: None,
     })
 }
 
@@ -517,10 +577,13 @@ async fn translate_tencent(
         .ok_or("Tencent translation returned an unexpected response.")?
         .to_string();
 
+    let detected = json["Response"]["Source"].as_str().map(|s| s.to_string());
+
     Ok(TranslateResponse {
         source_text: text.to_string(),
         target_text: translated,
         engine: "tencent".to_string(),
+        detected_lang: detected,
     })
 }
 
@@ -538,9 +601,9 @@ fn sign_volctrans(access_key_id: &str, secret_access_key: &str, payload: &str) -
 
     // Canonical request
     let canonical_uri = "/";
-    let canonical_querystring = "Action=TranslateText&Version=2020-07-01";
+    let canonical_querystring = "Action=TranslateText&Version=2020-06-01";
     let canonical_headers = format!(
-        "content-type:application/json\nhost:open.volcengineapi.com\nx-date:{}\n",
+        "content-type:application/json\nhost:translate.volcengineapi.com\nx-date:{}\n",
         timestamp
     );
     let signed_headers = "content-type;host;x-date";
@@ -586,7 +649,7 @@ async fn translate_volctrans(
     }
 
     let payload = serde_json::json!({
-        "TargetLanguage": target_lang,
+        "TargetLanguage": to_volctrans_lang(target_lang),
         "TextList": [text],
     })
     .to_string();
@@ -596,10 +659,10 @@ async fn translate_volctrans(
     let x_date = now.format("%Y%m%dT%H%M%SZ").to_string();
 
     let resp = http_client()
-        .post("https://open.volcengineapi.com?Action=TranslateText&Version=2020-07-01")
+        .post("https://translate.volcengineapi.com?Action=TranslateText&Version=2020-06-01")
         .header("Authorization", &authorization)
         .header("Content-Type", "application/json")
-        .header("Host", "open.volcengineapi.com")
+        .header("Host", "translate.volcengineapi.com")
         .header("X-Date", &x_date)
         .body(payload)
         .send()
@@ -624,10 +687,15 @@ async fn translate_volctrans(
         .ok_or("Volctrans returned an unexpected response.")?
         .to_string();
 
+    let detected = json["TranslationList"][0]["DetectedSourceLanguage"]
+        .as_str()
+        .map(|s| s.to_string());
+
     Ok(TranslateResponse {
         source_text: text.to_string(),
         target_text: translated,
         engine: "volctrans".to_string(),
+        detected_lang: detected,
     })
 }
 

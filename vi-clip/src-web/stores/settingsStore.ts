@@ -28,6 +28,7 @@ interface SettingsState {
   tencentSecretKey: string;
   volctransAccessKeyId: string;
   volctransSecretAccessKey: string;
+  defaultTargetLang: string;
   language: string;
   shortcutKey: string;
   radialMenuEnabled: boolean;
@@ -60,6 +61,7 @@ export const useSettingsStore = create<SettingsState>((set) => ({
   tencentSecretKey: "",
   volctransAccessKeyId: "",
   volctransSecretAccessKey: "",
+  defaultTargetLang: "zh",
   language: "zh-CN",
   shortcutKey: "Alt+V",
   radialMenuEnabled: true,
@@ -89,6 +91,7 @@ export const useSettingsStore = create<SettingsState>((set) => ({
         tencentSecretKey: settings.tencent_secret_key || "",
         volctransAccessKeyId: settings.volctrans_access_key_id || "",
         volctransSecretAccessKey: settings.volctrans_secret_access_key || "",
+        defaultTargetLang: settings.default_target_lang || "zh",
         language: settings.language === "en" ? "en-US" : (settings.language || "zh-CN"),
         shortcutKey: settings.shortcut_key || "Alt+V",
         radialMenuEnabled: settings.radial_menu_enabled !== "0",

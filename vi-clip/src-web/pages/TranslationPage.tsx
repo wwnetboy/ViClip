@@ -1,22 +1,11 @@
 import { useTranslation } from "react-i18next";
 import { useTranslationStore } from "../stores/translationStore";
+import { useSettingsStore } from "../stores/settingsStore";
 import { Icons } from "../components/Icons";
 import IosSelect from "../components/IosSelect";
-import { useState } from "react";
-
-const LANGUAGES = [
-  { code: "zh", name: "中文", badge: "ZH" },
-  { code: "en", name: "English", badge: "EN" },
-  { code: "ja", name: "日本語", badge: "JA" },
-  { code: "ko", name: "한국어", badge: "KO" },
-  { code: "fr", name: "Français", badge: "FR" },
-  { code: "de", name: "Deutsch", badge: "DE" },
-  { code: "es", name: "Español", badge: "ES" },
-  { code: "ru", name: "Русский", badge: "RU" },
-  { code: "ar", name: "العربية", badge: "AR" },
-  { code: "th", name: "ไทย", badge: "TH" },
-  { code: "vi", name: "Tiếng Việt", badge: "VI" },
-];
+import { useState, useEffect, useCallback } from "react";
+import { getLanguagesForEngine, normalizeLangCode } from "../data/languages";
+import i18next from "i18next";
 
 function localizeError(error: string, t: (key: string) => string): string {
   const lower = error.toLowerCase();
@@ -35,7 +24,18 @@ function localizeError(error: string, t: (key: string) => string): string {
   if (lower.includes("not configured") || lower.includes("fill in the")) {
     return t("translate.errors.config");
   }
+  // Show API-specific errors directly so the user can see the actual reason
+  if (lower.includes("translation error") || lower.includes("translate error")) {
+    return error;
+  }
   return t("translate.errors.generic");
+}
+
+function langName(code: string): string {
+  const c = normalizeLangCode(code);
+  const found = getLanguagesForEngine("google").find((l) => l.code === c);
+  const name = found ? found.name : code;
+  return i18next.t(`langs.${c}`, name);
 }
 
 export default function TranslationPage() {
@@ -47,10 +47,19 @@ export default function TranslationPage() {
     engine,
     loading,
     error,
+    detectedLang,
     setInputText,
     setTargetLang,
-    translate,
+    clearInput,
   } = useTranslationStore();
+
+  const defaultEngine = useSettingsStore((s) => s.defaultEngine);
+  const defaultTargetLang = useSettingsStore((s) => s.defaultTargetLang);
+  const engineLangs = getLanguagesForEngine(defaultEngine);
+
+  useEffect(() => {
+    setTargetLang(defaultTargetLang);
+  }, [defaultTargetLang]);
 
   const [copied, setCopied] = useState(false);
 
@@ -67,67 +76,51 @@ export default function TranslationPage() {
 
   return (
     <div className="translation-page">
-      <div className="translation-input-card">
+      {/* ── 上半区：源语言输入 ── */}
+      <div className="trans-panel trans-source">
+        <div className="trans-panel-header">
+          <span className="trans-panel-label">
+            {detectedLang && inputText
+              ? `${t("translate.sourceLang")} - ${langName(detectedLang)}`
+              : t("translate.sourceLang")}
+          </span>
+          {inputText && (
+            <button className="trans-clear-btn" onClick={clearInput} title={t("translate.clear")}>
+              {Icons.delete}
+            </button>
+          )}
+        </div>
         <textarea
-          className="translation-input"
+          className="trans-textarea"
           placeholder={t("translate.inputPlaceholder")}
           value={inputText}
           onChange={(e) => setInputText(e.target.value)}
         />
-        <div className="translation-input-footer">
-          <span className="char-count">{inputText.length}</span>
-          <button
-            className="translate-btn"
-            onClick={translate}
-            disabled={loading || !inputText.trim()}
-          >
-            {loading ? (
-              <div className="translate-spinner" />
-            ) : (
-              <>
-                {Icons.translate}
-                <span>{t("translate.translate")}</span>
-              </>
-            )}
-          </button>
+        <div className="trans-panel-footer">
+          <span className="trans-char-count">{inputText.length}/5000</span>
         </div>
       </div>
 
-      <div className="translation-lang-section">
-        <span className="translation-lang-label">{t("translate.targetLang")}</span>
-        <div className="translation-lang-select-wrapper">
-          <IosSelect
-            value={targetLang}
-            options={LANGUAGES.map((l) => ({ value: l.code, label: l.name }))}
-            onChange={setTargetLang}
-          />
-        </div>
-      </div>
-
-      {error && (
-        <div className="translation-error">
-          <div className="translation-error-top">
-            <div className="error-icon-svg">{Icons.delete}</div>
-            <span className="translation-error-text">{localizeError(error, t)}</span>
-            <button className="translation-retry-btn" onClick={translate} title={t("translate.retry")}>
-              {Icons.refresh}
-            </button>
+      {/* ── 下半区：目标语言输出 ── */}
+      <div className="trans-panel trans-target">
+        <div className="trans-panel-header">
+          <div className="trans-lang-select">
+            <IosSelect
+              value={targetLang}
+              options={engineLangs.map((l) => ({ value: l.code, label: t(`langs.${l.code}`, l.name) }))}
+              onChange={setTargetLang}
+            />
           </div>
-        </div>
-      )}
-
-      <div className="translation-result-card">
-        <div className="translation-result-header">
-          <span className="section-label">{t("translate.result")}</span>
-          <div className="translation-result-header-right">
-            {engine && (
+          <div className="trans-panel-actions">
+            {loading && <div className="translate-spinner" />}
+            {engine && !loading && (
               <span className="engine-badge">
-                {engine === "ai" ? "AI" : engine === "baidu" ? "Baidu" : engine === "youdao" ? "Youdao" : engine === "tencent" ? "Tencent" : engine === "volctrans" ? "Volctrans" : "Google"}
+                {engine === "ai" ? t("translate.engineAi") : engine === "baidu" ? t("translate.engineBaidu") : engine === "youdao" ? t("translate.engineYoudao") : engine === "tencent" ? t("translate.engineTencent") : engine === "volctrans" ? t("translate.engineVolctrans") : t("translate.engineGoogle")}
               </span>
             )}
             {result && (
               <button
-                className={`translation-copy-btn ${copied ? "copied" : ""}`}
+                className={`trans-copy-btn ${copied ? "copied" : ""}`}
                 onClick={handleCopy}
                 title={copied ? t("translate.copied") : t("translate.copy")}
               >
@@ -136,12 +129,18 @@ export default function TranslationPage() {
             )}
           </div>
         </div>
-        <div className="translation-result">
-          {result ? (
-            <p className="result-text">{result}</p>
+        <div className="trans-result-body">
+          {error ? (
+            <div className="trans-error-banner">
+              <div className="trans-error-top">
+                <div className="error-icon-svg">{Icons.delete}</div>
+                <span className="trans-error-text">{localizeError(error, t)}</span>
+              </div>
+            </div>
+          ) : result ? (
+            <p className="trans-result-text">{result}</p>
           ) : (
-            <div className="result-placeholder">
-              <div className="result-placeholder-icon">{Icons.translate}</div>
+            <div className="trans-result-placeholder">
               <span>{t("translate.noResult")}</span>
             </div>
           )}

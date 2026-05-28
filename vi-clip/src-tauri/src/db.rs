@@ -232,6 +232,7 @@ pub fn init_db(app: &AppHandle) -> Result<(), Box<dyn std::error::Error>> {
         INSERT OR IGNORE INTO settings (key, value) VALUES ('autostart', '1');
         INSERT OR IGNORE INTO settings (key, value) VALUES ('minimize_to_tray', '0');
         INSERT OR IGNORE INTO settings (key, value) VALUES ('shortcut_key', 'Alt+V');
+        INSERT OR IGNORE INTO settings (key, value) VALUES ('default_target_lang', 'zh');
 
         UPDATE settings SET value = 'google' WHERE key = 'default_translate_engine' AND value = 'builtin';
         ",

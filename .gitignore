@@ -1,4 +1,8 @@
 releases/
+.playwright-mcp/
+
+# Font source files (only WOFF2 subsets are distributed)
+vi-clip/public/fonts/ttf/
 .trae/
 .claude/
 docs/

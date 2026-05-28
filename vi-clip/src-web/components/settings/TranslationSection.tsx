@@ -1,6 +1,7 @@
 import { useTranslation } from "react-i18next";
 import IosSelect from "../IosSelect";
 import { useSettingsStore } from "../../stores/settingsStore";
+import { getLanguagesForEngine } from "../../data/languages";
 
 interface TranslationSectionProps {
   engine: string;
@@ -37,6 +38,22 @@ export function TranslationSection({
   const tencentSecretKey = useSettingsStore((s) => s.tencentSecretKey);
   const volctransAccessKeyId = useSettingsStore((s) => s.volctransAccessKeyId);
   const volctransSecretAccessKey = useSettingsStore((s) => s.volctransSecretAccessKey);
+  const defaultTargetLang = useSettingsStore((s) => s.defaultTargetLang);
+
+  const engineLangs = getLanguagesForEngine(engine);
+  const engineLangCodes = new Set(engineLangs.map((l) => l.code));
+  const isTargetLangValid = engineLangCodes.has(defaultTargetLang);
+
+  const handleEngineChange = (newEngine: string) => {
+    onEngineChange(newEngine);
+    const newCodes = new Set(
+      getLanguagesForEngine(newEngine).map((l) => l.code)
+    );
+    if (!newCodes.has(useSettingsStore.getState().defaultTargetLang)) {
+      useSettingsStore.setState({ defaultTargetLang: "zh" });
+      persistConfig("default_target_lang", "zh", "settings.toast.defaultTargetLang");
+    }
+  };
 
   const field = (
     dbKey: string,
@@ -56,7 +73,18 @@ export function TranslationSection({
           <IosSelect
             value={engine}
             options={engineOptions}
-            onChange={onEngineChange}
+            onChange={handleEngineChange}
+          />
+        </div>
+        <div className="settings-row">
+          <div className="settings-row-label">{t("settings.defaultTargetLang")}</div>
+          <IosSelect
+            value={isTargetLangValid ? defaultTargetLang : "zh"}
+            options={engineLangs.map((l) => ({ value: l.code, label: t(`langs.${l.code}`, l.name) }))}
+            onChange={(v) => {
+              useSettingsStore.setState({ defaultTargetLang: v });
+              persistConfig("default_target_lang", v, "settings.toast.defaultTargetLang");
+            }}
           />
         </div>
 
