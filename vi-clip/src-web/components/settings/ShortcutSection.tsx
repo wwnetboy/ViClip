@@ -1,4 +1,5 @@
 import { useTranslation } from "react-i18next";
+import { displayShortcut, isMacOS } from "../../utils";
 
 interface ShortcutSectionProps {
   shortcutKey: string;
@@ -24,9 +25,12 @@ export function ShortcutSection({
   onClickModeChange,
 }: ShortcutSectionProps) {
   const { t } = useTranslation();
+  const macOS = isMacOS();
 
-  const winVEnabled = shortcutKey === "Super+V";
-  const displayKey = shortcutKey.replace("Super", "Win");
+  // Win+V interception is a Windows-only feature. On macOS, Super+V is a
+  // normal customizable shortcut and should not disable the record button.
+  const winVEnabled = !macOS && shortcutKey === "Super+V";
+  const displayKey = displayShortcut(shortcutKey);
 
   return (
     <div className="settings-section">
@@ -49,6 +53,7 @@ export function ShortcutSection({
             </div>
           </div>
         </div>
+        {!macOS && (
         <div className="settings-row">
           <div className="settings-row-label">{t("settings.winVShortcut")}</div>
           <div className="radial-shortcut-right">
@@ -61,10 +66,13 @@ export function ShortcutSection({
             </button>
           </div>
         </div>
+        )}
         <div className="settings-row">
           <div className="settings-row-label">{t("settings.radialShortcut")}</div>
           <div className="radial-shortcut-right">
-            <span className="radial-shortcut-key">{t("settings.radialShortcutDesc")}</span>
+            <span className="radial-shortcut-key">
+              {macOS ? "Command+Shift+V" : t("settings.radialShortcutDesc")}
+            </span>
             <button
               className={`toggle-switch ${radialMenuEnabled ? "on" : "off"}`}
               onClick={() => onRadialMenuChange(!radialMenuEnabled)}

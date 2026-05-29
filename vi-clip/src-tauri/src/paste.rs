@@ -15,6 +15,99 @@ pub fn save_foreground_window() {
     }
 }
 
+#[cfg(target_os = "macos")]
+fn paste_cmd_v_macos() {
+    extern "C" {
+        fn CGEventCreateKeyboardEvent(source: *mut std::ffi::c_void, virtual_key: u16, key_down: bool) -> *mut std::ffi::c_void;
+        fn CGEventSetFlags(event: *mut std::ffi::c_void, flags: u64);
+        fn CGEventPost(tap_location: u32, event: *mut std::ffi::c_void);
+        fn CFRelease(cf: *mut std::ffi::c_void);
+    }
+
+    // kCGHIDEventTap = 0
+    // kVK_Command = 0x37, kVK_ANSI_V = 0x09
+    // kCGEventFlagMaskCommand = 0x00100000
+
+    unsafe {
+        // Cmd key down — set command flag to indicate Cmd is held
+        let cmd_down = CGEventCreateKeyboardEvent(std::ptr::null_mut(), 0x37, true);
+        if !cmd_down.is_null() {
+            CGEventSetFlags(cmd_down, 0x00100000); // kCGEventFlagMaskCommand
+            CGEventPost(0, cmd_down);
+            CFRelease(cmd_down);
+            log::info!("[paste] Cmd down posted");
+        }
+
+        thread::sleep(Duration::from_millis(50));
+
+        // V key down — keep command flag to indicate Cmd is still held
+        let v_down = CGEventCreateKeyboardEvent(std::ptr::null_mut(), 0x09, true);
+        if !v_down.is_null() {
+            CGEventSetFlags(v_down, 0x00100000); // Cmd still held
+            CGEventPost(0, v_down);
+            CFRelease(v_down);
+            log::info!("[paste] V down posted");
+        }
+
+        thread::sleep(Duration::from_millis(30));
+
+        // V key up
+        let v_up = CGEventCreateKeyboardEvent(std::ptr::null_mut(), 0x09, false);
+        if !v_up.is_null() {
+            CGEventPost(0, v_up);
+            CFRelease(v_up);
+        }
+
+        thread::sleep(Duration::from_millis(20));
+
+        // Cmd key up — no flags (Cmd released)
+        let cmd_up = CGEventCreateKeyboardEvent(std::ptr::null_mut(), 0x37, false);
+        if !cmd_up.is_null() {
+            CGEventPost(0, cmd_up);
+            CFRelease(cmd_up);
+            log::info!("[paste] Cmd up posted");
+        }
+
+        log::info!("[paste] CGEventPost Cmd+V sequence completed");
+    }
+}
+
+#[cfg(target_os = "macos")]
+fn deactivate_app_macos() {
+    // Use performSelectorOnMainThread to avoid linker issues with dispatch_get_main_queue.
+    use cocoa::base::id;
+    use objc::{class, msg_send, sel, sel_impl};
+
+    unsafe {
+        let ns_app: id = msg_send![class!(NSApplication), sharedApplication];
+        // Create a selector for deactivate
+        let sel = objc::runtime::Sel::register("deactivate");
+        // performSelectorOnMainThread:withObject:waitUntilDone:
+        let _: () = msg_send![ns_app, performSelectorOnMainThread:sel withObject:std::ptr::null_mut::<objc::runtime::Object>() waitUntilDone:true];
+    }
+}
+
+#[cfg(target_os = "macos")]
+fn wait_for_modifier_keys_release_macos() {
+    extern "C" {
+        fn CGEventSourceKeyState(state_id: i32, keycode: u16) -> bool;
+    }
+    let start = std::time::Instant::now();
+    let timeout = std::time::Duration::from_millis(500);
+    loop {
+        let ctrl_down = unsafe { CGEventSourceKeyState(1, 0x3B) }; // kCGEventSourceStateHIDSystemState=1, kVK_Control=0x3B
+        let alt_down = unsafe { CGEventSourceKeyState(1, 0x3A) };  // kVK_Option=0x3A
+        if !ctrl_down && !alt_down {
+            break;
+        }
+        if start.elapsed() > timeout {
+            break;
+        }
+        std::thread::sleep(std::time::Duration::from_millis(10));
+    }
+    std::thread::sleep(std::time::Duration::from_millis(30));
+}
+
 use std::collections::HashMap;
 use std::sync::{Arc, Mutex, OnceLock};
 
@@ -149,6 +242,15 @@ fn paste_with_defocus(app: &AppHandle) -> Result<(), String> {
     window.hide().map_err(|e| e.to_string())?;
     debug_log!("main window hidden, visible after: {:?}", window.is_visible());
 
+    #[cfg(target_os = "macos")]
+    {
+        // MUST dispatch to main thread — AppKit APIs are not thread-safe.
+        // NSApp.deactivate must be called on the main thread.
+        deactivate_app_macos();
+        log::info!("[paste] app deactivated, waiting for app switch");
+        thread::sleep(Duration::from_millis(200));
+    }
+
     // Wait for user to release Ctrl/Alt from the radial menu gesture (Ctrl+Alt+RightClick).
     // If we send Ctrl+V while the physical Ctrl is still held, the simulated Ctrl release
     // can race with the physical release, causing the target app to receive a bare 'V'.
@@ -172,11 +274,17 @@ fn paste_with_defocus(app: &AppHandle) -> Result<(), String> {
         thread::sleep(Duration::from_millis(30));
     }
 
-    #[cfg(not(target_os = "windows"))]
+    #[cfg(target_os = "macos")]
+    {
+        wait_for_modifier_keys_release_macos();
+        log::info!("[paste] modifiers released, will simulate Cmd+V");
+    }
+    #[cfg(not(any(target_os = "windows", target_os = "macos")))]
     {
         thread::sleep(Duration::from_millis(200));
     }
 
+    #[cfg(not(target_os = "macos"))]
     let mut enigo = Enigo::new(&Settings::default()).map_err(|e| format!("enigo init: {}", e))?;
 
     #[cfg(target_os = "windows")]
@@ -190,16 +298,12 @@ fn paste_with_defocus(app: &AppHandle) -> Result<(), String> {
 
     #[cfg(target_os = "macos")]
     {
-        enigo.key(Key::Meta, Direction::Press).map_err(|e| e.to_string())?;
-        thread::sleep(Duration::from_millis(30));
-        enigo.key(Key::V, Direction::Press).map_err(|e| e.to_string())?;
-        thread::sleep(Duration::from_millis(10));
-        enigo.key(Key::V, Direction::Release).map_err(|e| e.to_string())?;
-        thread::sleep(Duration::from_millis(10));
-        enigo.key(Key::Meta, Direction::Release).map_err(|e| e.to_string())?;
+        log::info!("[paste] simulating Cmd+V via CGEventPost");
+        paste_cmd_v_macos();
     }
 
     debug_log!("paste_with_defocus completed OK");
+    log::info!("[paste] paste_with_defocus completed OK");
     Ok(())
 }
 
@@ -286,6 +390,29 @@ fn write_image_to_clipboard(rgba: &[u8], w: u32, h: u32, png_bytes: &[u8]) -> Re
     Ok(())
 }
 
+#[cfg(target_os = "macos")]
+fn write_image_to_clipboard_macos(png_bytes: &[u8]) -> Result<(), String> {
+    use objc::{class, msg_send, sel, sel_impl};
+    use objc::runtime::Object;
+
+    unsafe {
+        let pasteboard: *mut Object = msg_send![class!(NSPasteboard), generalPasteboard];
+        let _: () = msg_send![pasteboard, clearContents];
+
+        // Create NSData from png bytes
+        let ns_data: *mut Object = msg_send![class!(NSData), dataWithBytes:png_bytes.as_ptr() length:png_bytes.len()];
+
+        // NSPasteboardTypePNG = @"public.png" (it's an NSString constant, not a class)
+        let ns_png_type: *mut Object = msg_send![class!(NSString), stringWithUTF8String: b"public.png\0".as_ptr() as *const std::os::raw::c_char];
+        let written: bool = msg_send![pasteboard, setData:ns_data forType:ns_png_type];
+
+        if !written {
+            return Err("NSPasteboard setData for PNG failed".to_string());
+        }
+    }
+    Ok(())
+}
+
 #[cfg(target_os = "windows")]
 fn write_files_to_clipboard(paths: &[String]) -> Result<(), String> {
     use windows::Win32::System::DataExchange::*;
@@ -347,6 +474,28 @@ fn write_files_to_clipboard(paths: &[String]) -> Result<(), String> {
         let _ = CloseClipboard();
     }
 
+    Ok(())
+}
+
+#[cfg(target_os = "macos")]
+fn write_files_to_clipboard_macos(paths: &[String]) -> Result<(), String> {
+    use objc::{class, msg_send, sel, sel_impl};
+    use objc::runtime::Object;
+
+    unsafe {
+        let pasteboard: *mut Object = msg_send![class!(NSPasteboard), generalPasteboard];
+        let _: () = msg_send![pasteboard, clearContents];
+
+        let mut urls: Vec<*mut Object> = Vec::new();
+        for path in paths {
+            let ns_str: *mut Object = msg_send![class!(NSString), stringWithUTF8String:path.as_ptr() as *const std::os::raw::c_char];
+            let url: *mut Object = msg_send![class!(NSURL), fileURLWithPath:ns_str];
+            urls.push(url);
+        }
+
+        let ns_array: *mut Object = msg_send![class!(NSArray), arrayWithObjects:urls.as_ptr() count:urls.len()];
+        let _: bool = msg_send![pasteboard, writeObjects:ns_array];
+    }
     Ok(())
 }
 
@@ -448,7 +597,13 @@ pub fn paste_image(app: AppHandle, path: String) -> Result<(), String> {
             }
         }
 
-        #[cfg(not(target_os = "windows"))]
+        #[cfg(target_os = "macos")]
+        {
+            if let Err(e) = write_image_to_clipboard_macos(&png) {
+                log::error!("paste_image: write clipboard error: {}", e); return;
+            }
+        }
+        #[cfg(not(any(target_os = "windows", target_os = "macos")))]
         {
             let tauri_img = tauri::image::Image::new_owned(rgba.to_vec(), w, h);
             if let Err(e) = handle.clipboard().write_image(&tauri_img) {
@@ -498,7 +653,14 @@ pub fn paste_file(app: AppHandle, path: String) -> Result<(), String> {
             }
         }
 
-        #[cfg(not(target_os = "windows"))]
+        #[cfg(target_os = "macos")]
+        {
+            if let Err(e) = write_files_to_clipboard_macos(&[path]) {
+                log::error!("paste_file: write clipboard error: {}", e);
+                return;
+            }
+        }
+        #[cfg(not(any(target_os = "windows", target_os = "macos")))]
         {
             if let Err(e) = handle.clipboard().write_text(&path) {
                 log::error!("paste_file: write clipboard error: {}", e);

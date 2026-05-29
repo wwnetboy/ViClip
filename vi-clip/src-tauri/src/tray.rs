@@ -12,7 +12,7 @@ fn build_tray_menu(app: &AppHandle, lang: &str) -> Result<tauri::menu::Menu<taur
     let version = env!("CARGO_PKG_VERSION");
     let is_cn = lang.starts_with("zh");
 
-    let (website_text, version_text, update_text, guide_text, feedback_text, prefs_text, quit_text) = if is_cn {
+    let (website_text, version_text, update_text, guide_text, feedback_text, prefs_text, quit_text, radial_text) = if is_cn {
         (
             "ViClip官网",
             format!("版本 v{}", version),
@@ -21,6 +21,7 @@ fn build_tray_menu(app: &AppHandle, lang: &str) -> Result<tauri::menu::Menu<taur
             "意见反馈",
             "偏好设置",
             "退出应用",
+            "简约窗口",
         )
     } else {
         (
@@ -31,6 +32,7 @@ fn build_tray_menu(app: &AppHandle, lang: &str) -> Result<tauri::menu::Menu<taur
             "Feedback",
             "Preferences",
             "Quit App",
+            "Radial Menu",
         )
     };
 
@@ -44,11 +46,14 @@ fn build_tray_menu(app: &AppHandle, lang: &str) -> Result<tauri::menu::Menu<taur
     let sep1 = PredefinedMenuItem::separator(app)?;
     let sep2 = PredefinedMenuItem::separator(app)?;
     let sep3 = PredefinedMenuItem::separator(app)?;
+    let sep4 = PredefinedMenuItem::separator(app)?;
     let prefs = MenuItemBuilder::with_id("preferences", prefs_text).build(app)?;
+    let radial = MenuItemBuilder::with_id("radial-menu", radial_text).build(app)?;
     let quit = MenuItemBuilder::with_id("quit", quit_text).build(app)?;
 
     MenuBuilder::new(app)
         .item(&prefs)
+        .item(&radial)
         .item(&sep1)
         .item(&website)
         .item(&version_item)
@@ -143,6 +148,61 @@ pub fn create_tray(app: &AppHandle) -> Result<(), Box<dyn std::error::Error>> {
                 "preferences" => {
                     if let Some(window) = app.get_webview_window("main") {
                         let _ = app.emit("navigate-panel", "settings");
+                        window.show().ok();
+                        window.set_focus().ok();
+                    }
+                }
+                "radial-menu" => {
+                    if let Some(window) = app.get_webview_window("radial-menu") {
+                        // Hide main window so its content doesn't bleed through
+                        if let Some(main) = app.get_webview_window("main") {
+                            let _ = main.hide();
+                        }
+
+                        // Position at mouse cursor
+                        #[cfg(target_os = "macos")]
+                        {
+                            use cocoa::base::id;
+                            use cocoa::foundation::{NSPoint, NSRect};
+                            use objc::{class, msg_send, sel, sel_impl};
+                            let loc: NSPoint = unsafe { msg_send![class!(NSEvent), mouseLocation] };
+                            // Find screen containing cursor
+                            let screens: id = unsafe { msg_send![class!(NSScreen), screens] };
+                            let count: u64 = unsafe { msg_send![screens, count] };
+                            let mut screen_h: f64 = 0.0;
+                            for i in 0..count {
+                                let screen: id = unsafe { msg_send![screens, objectAtIndex:i] };
+                                let frame: NSRect = unsafe { msg_send![screen, frame] };
+                                if loc.x >= frame.origin.x && loc.x <= frame.origin.x + frame.size.width
+                                    && loc.y >= frame.origin.y && loc.y <= frame.origin.y + frame.size.height {
+                                    screen_h = frame.origin.y + frame.size.height;
+                                    break;
+                                }
+                            }
+                            if screen_h == 0.0 {
+                                let ms: id = unsafe { msg_send![class!(NSScreen), mainScreen] };
+                                let frame: NSRect = unsafe { msg_send![ms, frame] };
+                                screen_h = frame.origin.y + frame.size.height;
+                            }
+                            let y = screen_h - loc.y;
+                            let _ = window.set_position(tauri::Position::Logical(
+                                tauri::LogicalPosition::new(loc.x, y),
+                            ));
+                        }
+                        #[cfg(target_os = "windows")]
+                        {
+                            use windows::Win32::UI::WindowsAndMessaging::GetCursorPos;
+                            let mut pt = windows::Win32::Foundation::POINT::default();
+                            unsafe { let _ = GetCursorPos(&mut pt); }
+                            let _ = window.set_position(tauri::Position::Physical(
+                                tauri::PhysicalPosition::new(pt.x, pt.y),
+                            ));
+                        }
+
+                        let theme = crate::db::get_setting_sync(app, "theme")
+                            .unwrap_or_else(|| "light".to_string());
+                        let _ = app.emit("radial-menu-down",
+                            crate::shortcut::RadialMenuDownPayload { theme });
                         window.show().ok();
                         window.set_focus().ok();
                     }

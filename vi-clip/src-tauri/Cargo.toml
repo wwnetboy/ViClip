@@ -32,6 +32,16 @@ chrono = { version = "0.4", features = ["serde"] }
 enigo = "0.3"
 base64 = "0.22"
 image = { version = "0.25", default-features = false, features = ["png"] }
+tauri-plugin-process = "2.3.1"
+open = "5"
+tauri-plugin-autostart = "2.5.1"
+xxhash-rust = { version = "0.8", features = ["xxh3"] }
+md-5 = "0.10"
+hmac = "0.12"
+sha2 = "0.10"
+raw-window-handle = "0.6.2"
+
+[target.'cfg(target_os = "windows")'.dependencies]
 windows = { version = "0.58", features = [
   "Win32_Foundation",
   "Win32_Graphics_Dwm",
@@ -42,13 +52,11 @@ windows = { version = "0.58", features = [
   "Win32_System_Memory",
   "Win32_UI_Shell",
 ] }
-tauri-plugin-process = "2.3.1"
-open = "5"
-tauri-plugin-autostart = "2.5.1"
-xxhash-rust = { version = "0.8", features = ["xxh3"] }
-md-5 = "0.10"
-hmac = "0.12"
-sha2 = "0.10"
+
+[target.'cfg(target_os = "macos")'.dependencies]
+cocoa = "0.26"
+core-graphics = "0.24"
+objc = "0.2"
 
 [profile.release]
 opt-level = "z"

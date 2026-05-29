@@ -12,8 +12,7 @@ use windows::Win32::UI::Input::KeyboardAndMouse::*;
 #[cfg(target_os = "windows")]
 use windows::Win32::UI::WindowsAndMessaging::*;
 
-#[cfg(target_os = "windows")]
-static APP_HANDLE: OnceLock<AppHandle> = OnceLock::new();
+pub(crate) static APP_HANDLE: OnceLock<AppHandle> = OnceLock::new();
 #[cfg(target_os = "windows")]
 static HOOK_HANDLE: AtomicPtr<core::ffi::c_void> = AtomicPtr::new(core::ptr::null_mut());
 #[cfg(target_os = "windows")]
@@ -21,12 +20,9 @@ static KB_HOOK_HANDLE: AtomicPtr<core::ffi::c_void> = AtomicPtr::new(core::ptr::
 
 static TOGGLING: AtomicBool = AtomicBool::new(false);
 
-#[cfg(target_os = "windows")]
-static RADIAL_JUST_SHOWN: AtomicBool = AtomicBool::new(false);
-#[cfg(target_os = "windows")]
-static RADIAL_VISIBLE: AtomicBool = AtomicBool::new(false);
-#[cfg(target_os = "windows")]
-static RADIAL_HWND: AtomicIsize = AtomicIsize::new(0);
+pub(crate) static RADIAL_JUST_SHOWN: AtomicBool = AtomicBool::new(false);
+pub(crate) static RADIAL_VISIBLE: AtomicBool = AtomicBool::new(false);
+pub(crate) static RADIAL_HWND: AtomicIsize = AtomicIsize::new(0);
 
 #[cfg(target_os = "windows")]
 static WIN_KEY_DOWN: AtomicBool = AtomicBool::new(false);
@@ -43,13 +39,80 @@ impl Drop for ToggleGuard {
 }
 
 #[derive(serde::Serialize, Clone)]
-struct RadialMenuDownPayload {
-    theme: String,
+pub(crate) struct RadialMenuDownPayload {
+    pub(crate) theme: String,
+}
+
+/// Show radial menu at current mouse cursor position.
+/// Used as a keyboard shortcut alternative (Ctrl+Alt+V) when CGEventTap is unavailable.
+pub fn show_radial_menu_at_cursor(app: &AppHandle) {
+    if !RADIAL_MENU_ENABLED.load(Ordering::SeqCst) {
+        return;
+    }
+
+    if let Some(window) = app.get_webview_window("radial-menu") {
+        if let Some(main) = app.get_webview_window("main") {
+            let _ = main.hide();
+        }
+
+        #[cfg(target_os = "macos")]
+        {
+            use cocoa::base::id;
+            use cocoa::foundation::{NSPoint, NSRect};
+            use objc::{class, msg_send, sel, sel_impl};
+            let loc: NSPoint = unsafe { msg_send![class!(NSEvent), mouseLocation] };
+            // Get the screen containing the cursor
+            let screens: id = unsafe { msg_send![class!(NSScreen), screens] };
+            let count: u64 = unsafe { msg_send![screens, count] };
+            let mut screen_h: f64 = 0.0;
+            for i in 0..count {
+                let screen: id = unsafe { msg_send![screens, objectAtIndex:i] };
+                let frame: NSRect = unsafe { msg_send![screen, frame] };
+                // Check if cursor is on this screen
+                if loc.x >= frame.origin.x && loc.x <= frame.origin.x + frame.size.width
+                    && loc.y >= frame.origin.y && loc.y <= frame.origin.y + frame.size.height {
+                    screen_h = frame.origin.y + frame.size.height;
+                    break;
+                }
+            }
+            if screen_h == 0.0 {
+                let screen: id = unsafe { msg_send![class!(NSScreen), mainScreen] };
+                let frame: NSRect = unsafe { msg_send![screen, frame] };
+                screen_h = frame.origin.y + frame.size.height;
+            }
+            // Convert macOS bottom-left → top-left (Tauri LogicalPosition coords)
+            let x = loc.x;
+            let y = screen_h - loc.y;
+            let _ = window.set_position(tauri::Position::Logical(
+                tauri::LogicalPosition::new(x, y),
+            ));
+            log::info!("[radial] cursor=({:.0},{:.0}) screen_top={:.0} pos=({:.0},{:.0})",
+                loc.x, loc.y, screen_h, x, y);
+        }
+        #[cfg(target_os = "windows")]
+        {
+            use windows::Win32::UI::WindowsAndMessaging::GetCursorPos;
+            let mut pt = windows::Win32::Foundation::POINT::default();
+            unsafe { let _ = GetCursorPos(&mut pt); }
+            let _ = window.set_position(tauri::Position::Physical(
+                tauri::PhysicalPosition::new(pt.x, pt.y),
+            ));
+        }
+
+        let theme = crate::db::get_setting(app.clone(), "theme".to_string())
+            .unwrap_or_else(|_| "light".to_string());
+        let _ = app.emit("radial-menu-down", RadialMenuDownPayload { theme });
+
+        RADIAL_JUST_SHOWN.store(true, Ordering::SeqCst);
+        RADIAL_HWND.store(1, Ordering::SeqCst);
+        RADIAL_VISIBLE.store(true, Ordering::SeqCst);
+        let _ = window.show();
+        let _ = window.set_focus();
+    }
 }
 
 #[tauri::command]
 pub fn radial_menu_dismissed() {
-    #[cfg(target_os = "windows")]
     RADIAL_VISIBLE.store(false, Ordering::SeqCst);
 }
 
@@ -71,15 +134,11 @@ pub fn toggle_window(app: &AppHandle) {
             #[cfg(target_os = "windows")]
             {
                 crate::paste::save_foreground_window();
-                // Allow our own process (or any process) to call SetForegroundWindow.
-                // The thread has temporary foreground permission from the hotkey / hook
-                // input, so this ASFW call makes SetForegroundWindow bulletproof.
                 unsafe {
                     use windows::Win32::UI::WindowsAndMessaging::AllowSetForegroundWindow;
                     let _ = AllowSetForegroundWindow(0xFFFFFFFF);
                 }
             }
-
             log::info!("[toggle_window] showing window");
             let _ = window.unminimize();
             let _ = window.show();
@@ -267,6 +326,163 @@ pub fn install_mouse_hook(app: &AppHandle) {
             log::warn!("Failed to install mouse hook");
         }
     }
+
+    #[cfg(target_os = "macos")]
+    {
+        if let Ok(val) = crate::db::get_setting(app.clone(), "radial_menu_enabled".to_string()) {
+            RADIAL_MENU_ENABLED.store(val == "1", Ordering::SeqCst);
+        }
+
+        APP_HANDLE.set(app.clone()).ok();
+
+        // Mouse gesture (Shift+Cmd+Click) unavailable on macOS.
+        // Both CGEventTap and NSEvent.addGlobalMonitor require complex setup.
+        // Available alternatives:
+        //   - Cmd+Shift+V keyboard shortcut
+        //   - Tray right-click → 简约窗口 / Radial Menu
+        log::info!("macOS mouse gesture not available — use Cmd+Shift+V or tray menu");
+    }
+
+    /* OLD CGEventTap code preserved for reference:
+
+        let _app_handle = app.clone();
+        std::thread::spawn(move || {
+            // Use raw FFI for CGEventTap — more reliable than crate API
+            extern "C" {
+                fn CGEventTapCreate(
+                    tap: i32,           // kCGHIDEventTap = 0
+                    place: i32,         // kCGHeadInsertEventTap = 0
+                    options: i32,       // kCGEventTapOptionDefault = 0
+                    events_of_interest: u64,
+                    callback: Option<
+                        unsafe extern "C" fn(
+                            proxy: *mut std::ffi::c_void,
+                            event_type: u32,
+                            event: *mut std::ffi::c_void,
+                            user_info: *mut std::ffi::c_void,
+                        ) -> *mut std::ffi::c_void,
+                    >,
+                    user_info: *mut std::ffi::c_void,
+                ) -> *mut std::ffi::c_void;
+
+                fn CFRunLoopGetCurrent() -> *mut std::ffi::c_void;
+                fn CFMachPortCreateRunLoopSource(
+                    allocator: *mut std::ffi::c_void,
+                    port: *mut std::ffi::c_void,
+                    order: i64,
+                ) -> *mut std::ffi::c_void;
+                fn CFRunLoopAddSource(
+                    rl: *mut std::ffi::c_void,
+                    source: *mut std::ffi::c_void,
+                    mode: *mut std::ffi::c_void,
+                );
+                fn CGEventTapEnable(tap: *mut std::ffi::c_void, enable: bool);
+                fn CFRunLoopRun();
+            }
+
+            // Mouse event types: kCGEventRightMouseDown=3, kCGEventRightMouseUp=4,
+            // kCGEventLeftMouseDown=1, kCGEventOtherMouseDown=25
+            let events_mask: u64 = (1u64 << 3) | (1u64 << 4) | (1u64 << 1) | (1u64 << 25);
+
+            unsafe extern "C" fn tap_callback(
+                _proxy: *mut std::ffi::c_void,
+                event_type: u32,
+                event: *mut std::ffi::c_void,
+                _user_info: *mut std::ffi::c_void,
+            ) -> *mut std::ffi::c_void {
+                use core_graphics::geometry::CGPoint;
+
+                if event_type == 3 {
+                    // RightMouseDown — check modifier flags from the CGEvent
+                    extern "C" {
+                        fn CGEventGetFlags(event: *mut std::ffi::c_void) -> u64;
+                        fn CGEventGetLocation(event: *mut std::ffi::c_void) -> CGPoint;
+                    }
+
+                    let flags = unsafe { CGEventGetFlags(event) };
+                    let ctrl = (flags & (1 << 17)) != 0;   // kCGEventFlagMaskControl
+                    let alt = (flags & (1 << 19)) != 0;    // kCGEventFlagMaskAlternate
+                    let shift = (flags & (1 << 18)) != 0;  // kCGEventFlagMaskShift
+
+                    if ctrl && alt && !shift {
+                        if RADIAL_MENU_ENABLED.load(Ordering::SeqCst) {
+                            if let Some(app) = APP_HANDLE.get() {
+                                if let Some(window) = app.get_webview_window("radial-menu") {
+                                    let loc = unsafe { CGEventGetLocation(event) };
+
+                                    if let Some(main) = app.get_webview_window("main") {
+                                        let _ = main.hide();
+                                    }
+
+                                    let _ = window.set_position(tauri::Position::Physical(
+                                        tauri::PhysicalPosition::new(loc.x as i32, loc.y as i32),
+                                    ));
+
+                                    let theme = crate::db::get_setting(app.clone(), "theme".to_string())
+                                        .unwrap_or_else(|_| "light".to_string());
+
+                                    let _ = app.emit("radial-menu-down", RadialMenuDownPayload { theme });
+
+                                    RADIAL_JUST_SHOWN.store(true, Ordering::SeqCst);
+                                    RADIAL_HWND.store(1, Ordering::SeqCst); // non-zero sentinel for macOS
+                                    RADIAL_VISIBLE.store(true, Ordering::SeqCst);
+                                    let _ = window.show();
+                                    let _ = window.set_focus();
+                                }
+                            }
+                        }
+                        return std::ptr::null_mut(); // consume event
+                    }
+
+                    if ctrl && shift && !alt {
+                        if let Some(app) = APP_HANDLE.get() {
+                            toggle_window(app);
+                        }
+                        return std::ptr::null_mut();
+                    }
+                }
+
+                if event_type == 4 {
+                    // RightMouseUp
+                    if RADIAL_JUST_SHOWN.swap(false, Ordering::SeqCst) {
+                        return std::ptr::null_mut();
+                    }
+                }
+
+                // Dismiss radial on outside click
+                if RADIAL_VISIBLE.load(Ordering::SeqCst)
+                    && !RADIAL_JUST_SHOWN.load(Ordering::SeqCst)
+                    && (event_type == 1 || event_type == 3 || event_type == 25)
+                {
+                    RADIAL_VISIBLE.store(false, Ordering::SeqCst);
+                    if let Some(app) = APP_HANDLE.get() {
+                        if let Some(window) = app.get_webview_window("radial-menu") {
+                            let _ = window.hide();
+                            app.emit("radial-menu-dismissed", ()).ok();
+                        }
+                    }
+                }
+
+                event // pass through
+            }
+
+            unsafe {
+                let tap = CGEventTapCreate(0, 0, 0, events_mask, Some(tap_callback), std::ptr::null_mut());
+
+                if tap.is_null() {
+                    log::warn!("CGEventTapCreate failed — accessibility permission may not be granted");
+                    return;
+                }
+
+                let run_loop_source = CFMachPortCreateRunLoopSource(std::ptr::null_mut(), tap, 0);
+                let current_loop = CFRunLoopGetCurrent();
+                CFRunLoopAddSource(current_loop, run_loop_source, std::ptr::null_mut());
+                CGEventTapEnable(tap, true);
+                log::info!("macOS CGEvent tap installed (Ctrl+Shift+RightClick / Ctrl+Alt+RightClick)");
+                CFRunLoopRun();
+            }
+        });
+        */
 }
 
 #[cfg(target_os = "windows")]
@@ -334,7 +550,7 @@ pub fn update_shortcut(
         let _ = unregister_keyboard_shortcut(&app, &old_shortcut);
     }
 
-    // Toggle keyboard hook for Win-key shortcuts
+    // Toggle keyboard hook for Win-key shortcuts (Windows only)
     #[cfg(target_os = "windows")]
     {
         let old_is_win = old_shortcut.starts_with("Super+");
@@ -346,10 +562,21 @@ pub fn update_shortcut(
         }
     }
 
-    // Skip global-shortcut registration for Win-key combos — the keyboard hook handles them
-    if !new_key.starts_with("Super+") {
+    // Register the shortcut via global-shortcut plugin.
+    // On Windows, Win+key combos are handled by the keyboard hook above,
+    // so we skip plugin registration to avoid double-firing.
+    // On macOS/Linux, Super/Cmd is a normal modifier — always register.
+    #[cfg(not(target_os = "windows"))]
+    {
         register_keyboard_shortcut(&app, &new_key)
             .map_err(|e| format!("Failed to register shortcut: {}", e))?;
+    }
+    #[cfg(target_os = "windows")]
+    {
+        if !new_key.starts_with("Super+") {
+            register_keyboard_shortcut(&app, &new_key)
+                .map_err(|e| format!("Failed to register shortcut: {}", e))?;
+        }
     }
     Ok(())
 }

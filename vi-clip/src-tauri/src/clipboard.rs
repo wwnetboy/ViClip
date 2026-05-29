@@ -370,6 +370,47 @@ fn read_clipboard_files() -> Option<Vec<String>> {
     }
 }
 
+#[cfg(target_os = "macos")]
+fn read_clipboard_files_macos() -> Option<Vec<String>> {
+    use objc::{class, msg_send, sel, sel_impl};
+    use objc::runtime::Object;
+
+    unsafe {
+        let pasteboard: *mut Object = msg_send![class!(NSPasteboard), generalPasteboard];
+
+        // Get file URLs from pasteboard
+        let types: *mut Object = msg_send![class!(NSArray), arrayWithObject: objc::class!(NSURL)];
+        let options: *mut Object = msg_send![class!(NSDictionary), dictionary];
+        let items: *mut Object = msg_send![pasteboard, readObjectsForClasses:types options:options];
+
+        if items.is_null() {
+            return None;
+        }
+
+        let count: usize = msg_send![items, count];
+        if count == 0 {
+            return None;
+        }
+
+        let mut paths = Vec::new();
+        for i in 0..count {
+            let url: *mut Object = msg_send![items, objectAtIndex:i];
+            let is_file_url: bool = msg_send![url, isFileURL];
+            if is_file_url {
+                let path: *mut Object = msg_send![url, path];
+                // Convert NSString to Rust String
+                let c_str: *const std::os::raw::c_char = msg_send![path, UTF8String];
+                if !c_str.is_null() {
+                    let path_str = std::ffi::CStr::from_ptr(c_str).to_string_lossy().into_owned();
+                    paths.push(path_str);
+                }
+            }
+        }
+
+        if paths.is_empty() { None } else { Some(paths) }
+    }
+}
+
 /// Cached clipboard state, updated by the monitor and by paste functions.
 /// When paste writes to the clipboard, it syncs these to prevent duplicate records.
 pub static LAST_CLIPBOARD_TEXT: std::sync::Mutex<String> = std::sync::Mutex::new(String::new());
@@ -384,11 +425,23 @@ static LAST_IMAGE_RELATIVE: std::sync::Mutex<String> = std::sync::Mutex::new(Str
 #[cfg(target_os = "windows")]
 static LAST_CLIPBOARD_SEQ: std::sync::atomic::AtomicU32 = std::sync::atomic::AtomicU32::new(0);
 
+#[cfg(target_os = "macos")]
+static LAST_CLIPBOARD_CHANGE_COUNT: std::sync::atomic::AtomicU32 = std::sync::atomic::AtomicU32::new(0);
+
 
 #[cfg(target_os = "windows")]
 fn get_clipboard_sequence() -> u32 {
     use windows::Win32::System::DataExchange::GetClipboardSequenceNumber;
     unsafe { GetClipboardSequenceNumber() }
+}
+
+#[cfg(target_os = "macos")]
+fn get_clipboard_change_count() -> u32 {
+    use objc::{class, msg_send, sel, sel_impl};
+    unsafe {
+        let pasteboard: *mut objc::runtime::Object = msg_send![class!(NSPasteboard), generalPasteboard];
+        msg_send![pasteboard, changeCount]
+    }
 }
 
 /// Insert a new record into the DB and emit clipboard-update.
@@ -460,6 +513,10 @@ pub fn sync_monitor_cache(handle: &AppHandle) {
             *LAST_CLIPBOARD_FILES_KEY.lock().unwrap_or_else(|e| e.into_inner()) = files.join("|");
         }
         LAST_CLIPBOARD_SEQ.store(get_clipboard_sequence(), Ordering::SeqCst);
+    }
+    #[cfg(target_os = "macos")]
+    {
+        LAST_CLIPBOARD_CHANGE_COUNT.store(get_clipboard_change_count(), Ordering::SeqCst);
     }
 }
 
@@ -557,6 +614,21 @@ fn handle_monitor_files(handle: &AppHandle) {
             }
         }
     }
+    #[cfg(target_os = "macos")]
+    {
+        if let Some(files) = read_clipboard_files_macos() {
+            for file_path in files {
+                if file_path.trim().is_empty() {
+                    continue;
+                }
+                if is_previewable_image_file(&file_path) || is_image_file(&file_path) {
+                    import_image_file(handle, &file_path);
+                    continue;
+                }
+                insert_and_emit(handle, "file", &file_path);
+            }
+        }
+    }
 }
 
 pub fn start_monitor(app: &AppHandle) -> Result<(), Box<dyn std::error::Error>> {
@@ -581,6 +653,11 @@ pub fn start_monitor(app: &AppHandle) -> Result<(), Box<dyn std::error::Error>> 
             .unwrap_or_default();
         *LAST_CLIPBOARD_FILES_KEY.lock().unwrap_or_else(|e| e.into_inner()) = key;
         LAST_CLIPBOARD_SEQ.store(get_clipboard_sequence(), Ordering::SeqCst);
+    }
+
+    #[cfg(target_os = "macos")]
+    {
+        LAST_CLIPBOARD_CHANGE_COUNT.store(get_clipboard_change_count(), Ordering::SeqCst);
     }
 
     std::thread::spawn(move || {
@@ -615,7 +692,18 @@ pub fn start_monitor(app: &AppHandle) -> Result<(), Box<dyn std::error::Error>> 
                     false
                 }
             }
-            #[cfg(not(target_os = "windows"))]
+            #[cfg(target_os = "macos")]
+            {
+                let current = get_clipboard_change_count();
+                let last = LAST_CLIPBOARD_CHANGE_COUNT.load(Ordering::SeqCst);
+                if current != last {
+                    LAST_CLIPBOARD_CHANGE_COUNT.store(current, Ordering::SeqCst);
+                    true
+                } else {
+                    false
+                }
+            }
+            #[cfg(not(any(target_os = "windows", target_os = "macos")))]
             { false }
         };
 

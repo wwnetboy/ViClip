@@ -1,2 +1,4 @@
+# Windows GNU toolchain config — only applies when building for x86_64-pc-windows-gnu target.
+# macOS builds (aarch64-apple-darwin / x86_64-apple-darwin) use Apple LLVM, unaffected.
 [target.x86_64-pc-windows-gnu]
 rustflags = ["-C", "link-args=-Wl,--exclude-all-symbols"]

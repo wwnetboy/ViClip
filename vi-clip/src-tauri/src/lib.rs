@@ -176,6 +176,56 @@ fn apply_win10_blur_behind(hwnd: windows::Win32::Foundation::HWND) {
     }
 }
 
+#[cfg(target_os = "macos")]
+fn round_window_corners_macos(window: &tauri::WebviewWindow) {
+    use cocoa::base::{id, nil, YES, NO};
+    use objc::{class, msg_send, sel, sel_impl};
+    use raw_window_handle::{HasWindowHandle, RawWindowHandle};
+
+    if let Ok(raw) = window.window_handle() {
+        if let RawWindowHandle::AppKit(handle) = raw.as_raw() {
+            unsafe {
+                let ns_view = handle.ns_view.as_ptr() as id;
+
+                // Make NSWindow transparent (no white background at edges)
+                let ns_window: id = msg_send![ns_view, window];
+                let _: () = msg_send![ns_window, setOpaque:NO];
+                let clear_color: id = msg_send![class!(NSColor), clearColor];
+                let _: () = msg_send![ns_window, setBackgroundColor:clear_color];
+
+                // Round corners on the view layer
+                let _: () = msg_send![ns_view, setWantsLayer:YES];
+                let layer: id = msg_send![ns_view, layer];
+                let _: () = msg_send![layer, setCornerRadius:12.0f64];
+                let _: () = msg_send![layer, setMasksToBounds:YES];
+                let _: () = msg_send![layer, setBorderWidth:0.0f64];
+                let _: () = msg_send![layer, setBorderColor:nil];
+
+                // Apply corner radius to subviews too
+                let subviews: id = msg_send![ns_view, subviews];
+                let count: u64 = msg_send![subviews, count];
+                for i in 0..count {
+                    let sv: id = msg_send![subviews, objectAtIndex:i];
+                    let _: () = msg_send![sv, setWantsLayer:YES];
+                    let sv_layer: id = msg_send![sv, layer];
+                    let _: () = msg_send![sv_layer, setCornerRadius:12.0f64];
+                    let _: () = msg_send![sv_layer, setMasksToBounds:YES];
+                }
+
+                log::info!("macOS window rounded corners applied");
+            }
+        }
+    }
+}
+
+#[cfg(target_os = "macos")]
+fn apply_macos_vibrancy(_window: &tauri::WebviewWindow) {
+    // TODO: re-enable NSVisualEffectView after fixing NSInteger (i64) type issues on ARM64
+    // The addSubview:positioned:relativeTo: method crashes because -1i32 ≠ -1i64.
+    // Also setBlendingMode:/setMaterial:/setState: need i64 values.
+    log::info!("macOS vibrancy disabled (NSInteger type issue on ARM64)");
+}
+
 /// Build a WebviewWindow with page-load retry logic and a timeout watchdog.
 /// Returns the built window for further post-build customization.
 fn build_window_with_retry<M: tauri::Manager<tauri::Wry>>(
@@ -258,9 +308,18 @@ pub fn run() {
         .plugin(tauri_plugin_autostart::init(tauri_plugin_autostart::MacosLauncher::LaunchAgent, Some(vec!["--hidden"])))
         .plugin(
             tauri_plugin_global_shortcut::Builder::new()
-                .with_handler(|app, _shortcut, event| {
+                .with_handler(|app, sc, event| {
                     if event.state == tauri_plugin_global_shortcut::ShortcutState::Pressed {
-                        shortcut::toggle_window(app);
+                        let s = sc.to_string().to_lowercase();
+                        log::info!("[shortcut] pressed: {}", s);
+                        // Radial menu: Shift+V combo (Cmd+Shift+V on macOS, Ctrl+Shift+V on Win)
+                        if s.contains("shift") && s.contains('v') {
+                            log::info!("[shortcut] routing to radial menu");
+                            crate::shortcut::show_radial_menu_at_cursor(app);
+                        } else {
+                            log::info!("[shortcut] routing to toggle window");
+                            shortcut::toggle_window(app);
+                        }
                     }
                 })
                 .build(),
@@ -272,10 +331,11 @@ pub fn run() {
             // On auto-start (cold boot), delay to give WebView2 time to
             // initialize before creating any windows.
             if is_autostart {
+                #[cfg(target_os = "windows")]
                 std::thread::sleep(std::time::Duration::from_secs(3));
             }
 
-            if cfg!(debug_assertions) {
+            {
                 app.handle().plugin(
                     tauri_plugin_log::Builder::default()
                         .level(log::LevelFilter::Info)
@@ -286,22 +346,24 @@ pub fn run() {
             // Create main window programmatically (not from config) so it
             // is created AFTER asset protocol setup, avoiding a cold-boot
             // race where WebView2 navigates before the protocol is ready.
+            let main_builder = tauri::WebviewWindowBuilder::new(
+                app,
+                "main",
+                tauri::WebviewUrl::App("index.html".into()),
+            )
+            .title("ViClip")
+            .inner_size(520.0, 600.0)
+            .min_inner_size(440.0, 420.0)
+            .decorations(false);
+            #[cfg(target_os = "windows")]
+            let main_builder = main_builder.transparent(true);
             let main_window = build_window_with_retry(
                 app,
-                tauri::WebviewWindowBuilder::new(
-                    app,
-                    "main",
-                    tauri::WebviewUrl::App("index.html".into()),
-                )
-                .title("ViClip")
-                .inner_size(520.0, 600.0)
-                .min_inner_size(440.0, 420.0)
-                .decorations(false)
-                .transparent(true)
-                .visible(false)
-                .center()
-                .shadow(false)
-                .resizable(true),
+                main_builder
+                    .visible(false)
+                    .center()
+                    .shadow(false)
+                    .resizable(true),
                 "main",
             )?;
 
@@ -357,6 +419,14 @@ pub fn run() {
         apply_backdrop_effect(window, false);
             }
 
+            #[cfg(target_os = "macos")]
+            {
+                let _ = main_window.set_background_color(Some(tauri::window::Color(0, 0, 0, 0)));
+                apply_macos_vibrancy(&main_window);
+                // Rounded corners via NSView layer
+                round_window_corners_macos(&main_window);
+            }
+
             db::init_db(app.handle())?;
             db::prune_old_records(app.handle()).ok();
 
@@ -397,29 +467,47 @@ pub fn run() {
             app.handle().manage(tray::TrayState { tray: std::sync::Mutex::new(None) });
             tray::create_tray(app.handle())?;
 
+            // macOS app menu is configured via Tauri's default menu system.
+            // The tray icon already provides access to all functionality.
+
+            #[cfg(target_os = "macos")]
+            {
+                extern "C" {
+                    fn AXIsProcessTrusted() -> bool;
+                }
+                let trusted = unsafe { AXIsProcessTrusted() };
+                if !trusted {
+                    log::warn!("Accessibility permission NOT granted");
+                } else {
+                    log::info!("Accessibility permission granted");
+                }
+            }
+
             shortcut::install_mouse_hook(app.handle());
 
             // Create hidden compact window popup
             {
+                let radial_builder = tauri::WebviewWindowBuilder::new(
+                    app,
+                    "radial-menu",
+                    tauri::WebviewUrl::App("index.html?radial=1".into()),
+                )
+                .title("")
+                .inner_size(300.0, 420.0)
+                .decorations(false);
+                #[cfg(target_os = "windows")]
+                let radial_builder = radial_builder.transparent(true);
                 let radial = build_window_with_retry(
                     app,
-                    tauri::WebviewWindowBuilder::new(
-                        app,
-                        "radial-menu",
-                        tauri::WebviewUrl::App("index.html?radial=1".into()),
-                    )
-                    .title("")
-                    .inner_size(300.0, 420.0)
-                    .decorations(false)
-                    .transparent(true)
-                    .always_on_top(true)
-                    .visible(false)
-                    .shadow(false)
-                    .skip_taskbar(true)
-                    .resizable(false)
-                    .initialization_script(
-                        "document.documentElement.style.background='transparent';document.body.style.background='transparent';",
-                    ),
+                    radial_builder
+                        .always_on_top(true)
+                        .visible(false)
+                        .shadow(false)
+                        .skip_taskbar(true)
+                        .resizable(false)
+                        .initialization_script(
+                            "document.documentElement.style.background='transparent';document.body.style.background='transparent';",
+                        ),
                     "radial-menu",
                 )?;
 
@@ -447,28 +535,50 @@ pub fn run() {
                     }
                 }
 
+                #[cfg(target_os = "macos")]
+                {
+                    use cocoa::base::{id, YES};
+                    use objc::{msg_send, sel, sel_impl};
+                    use raw_window_handle::{HasWindowHandle, RawWindowHandle};
+
+                    if let Ok(raw) = radial.window_handle() {
+                        if let RawWindowHandle::AppKit(handle) = raw.as_raw() {
+                            unsafe {
+                                let ns_view = handle.ns_view.as_ptr() as id;
+                                let _: () = msg_send![ns_view, setWantsLayer:YES];
+                                let layer: id = msg_send![ns_view, layer];
+                                let _: () = msg_send![layer, setCornerRadius:16.0f64];
+                                let _: () = msg_send![layer, setMasksToBounds:YES];
+                            }
+                        }
+                    }
+                }
+
                 log::info!("Radial menu popup window created");
             }
 
             // Create toast notification window (bottom-right, always-on-top, transparent)
             {
+                #[cfg_attr(target_os = "windows", allow(unused_mut))]
+                let toast_builder = tauri::WebviewWindowBuilder::new(
+                    app,
+                    "toast",
+                    tauri::WebviewUrl::App("index.html?toast=1".into()),
+                )
+                .title("")
+                .inner_size(320.0, 80.0)
+                .decorations(false);
+                #[cfg(target_os = "windows")]
+                let toast_builder = toast_builder.transparent(true);
                 let toast = build_window_with_retry(
                     app,
-                    tauri::WebviewWindowBuilder::new(
-                        app,
-                        "toast",
-                        tauri::WebviewUrl::App("index.html?toast=1".into()),
-                    )
-                    .title("")
-                    .inner_size(320.0, 80.0)
-                    .decorations(false)
-                    .transparent(true)
-                    .always_on_top(true)
-                    .visible(true)
-                    .shadow(false)
-                    .skip_taskbar(true)
-                    .resizable(false)
-                    .focused(false),
+                    toast_builder
+                        .always_on_top(true)
+                        .visible(false)
+                        .shadow(false)
+                        .skip_taskbar(true)
+                        .resizable(false)
+                        .focused(false),
                     "toast",
                 )?;
 
@@ -499,16 +609,59 @@ pub fn run() {
                     }
                 }
 
+                #[cfg(target_os = "macos")]
+                {
+                    use cocoa::appkit::NSScreen;
+                    use cocoa::base::id;
+                    use cocoa::foundation::NSRect;
+                    use objc::{class, msg_send, sel, sel_impl};
+
+                    unsafe {
+                        // Use the main screen's visible frame (excludes menubar and Dock)
+                        let screen: id = msg_send![class!(NSScreen), mainScreen];
+                        let visible_frame: NSRect = msg_send![screen, visibleFrame];
+
+                        let scale = toast.scale_factor().unwrap_or(1.0);
+                        let window_w = 320.0;
+                        let window_h = 80.0;
+                        let margin = 12.0;
+
+                        // macOS coordinates: origin is bottom-left
+                        let x = (visible_frame.origin.x + visible_frame.size.width - (window_w + margin) * scale) as f64 / scale;
+                        let y = (visible_frame.origin.y + margin * scale) as f64 / scale;
+
+                        let _ = toast.set_position(tauri::PhysicalPosition::new(x, y));
+                    }
+                }
+
                 log::info!("Toast window created");
             }
 
             if let Ok(key) = db::get_setting(app.handle().clone(), "shortcut_key".to_string()) {
                 let shortcut = if key.is_empty() { "Alt+V".to_string() } else { key };
                 if shortcut.starts_with("Super+") {
-                    shortcut::install_keyboard_hook();
+                    #[cfg(target_os = "windows")]
+                    {
+                        // On Windows, Win+key combos use the low-level keyboard
+                        // hook for interception. Don't register via plugin.
+                        shortcut::install_keyboard_hook();
+                    }
+                    #[cfg(not(target_os = "windows"))]
+                    {
+                        // On macOS/Linux, Super/Cmd is a normal modifier.
+                        // Register via the global-shortcut plugin.
+                        if let Err(e) = shortcut::register_keyboard_shortcut(app.handle(), &shortcut) {
+                            log::warn!("Failed to register shortcut '{}': {}", shortcut, e);
+                        }
+                    }
                 } else if let Err(e) = shortcut::register_keyboard_shortcut(app.handle(), &shortcut) {
                     log::warn!("Failed to register keyboard shortcut '{}': {}", shortcut, e);
                 }
+            }
+
+            // Radial menu shortcut: Cmd+Shift+V (macOS) / Ctrl+Shift+V (Windows)
+            if let Err(e) = shortcut::register_keyboard_shortcut(app.handle(), "CommandOrControl+Shift+V") {
+                log::warn!("Failed to register radial menu shortcut: {}", e);
             }
 
             // Show main window when not auto-started and minimize_to_tray is off
@@ -563,6 +716,21 @@ pub fn run() {
             updater::check_update,
             updater::download_and_install_update,
         ])
-        .run(tauri::generate_context!())
-        .expect("error while running tauri application");
+        .build(tauri::generate_context!())
+        .expect("error while building tauri application")
+        .run(|_handle, event| {
+            // macOS: show main window when Dock icon is clicked
+            #[cfg(target_os = "macos")]
+            if let tauri::RunEvent::Reopen { .. } = &event {
+                if let Some(window) = _handle.get_webview_window("main") {
+                    let _ = window.unminimize();
+                    let _ = window.show();
+                    let _ = window.set_focus();
+                    log::info!("Dock click: showing main window");
+                }
+            }
+            // Suppress unused warning on non-macOS
+            #[cfg(not(target_os = "macos"))]
+            let _ = &event;
+        });
 }

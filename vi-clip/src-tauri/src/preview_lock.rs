@@ -77,7 +77,7 @@ pub fn set_preview_aspect_ratio(
     ratio: Option<f64>,
     titlebar_h_logical: i32,
 ) {
-    #[cfg(not(target_os = "windows"))]
+    #[cfg(not(any(target_os = "windows", target_os = "macos")))]
     {
         let _ = (app, window_label, ratio, titlebar_h_logical);
     }
@@ -117,6 +117,57 @@ pub fn set_preview_aspect_ratio(
                         }
                     }
                 }
+            }
+        }
+    }
+
+    #[cfg(target_os = "macos")]
+    {
+        use tauri::Manager;
+        use cocoa::base::id;
+        use objc::{msg_send, sel, sel_impl};
+        use raw_window_handle::{HasWindowHandle, RawWindowHandle};
+
+        if let Some(window) = app.get_webview_window(&window_label) {
+            if let Ok(raw) = window.window_handle() {
+                if let RawWindowHandle::AppKit(handle) = raw.as_raw() {
+                    unsafe {
+                        let ns_view = handle.ns_view.as_ptr() as id;
+                        let ns_window: id = msg_send![ns_view, window];
+
+                    if let Some(r) = ratio {
+                        // Set contentAspectRatio — built-in NSWindow property
+                        let ns_size = cocoa::foundation::NSSize {
+                            width: r as f64,
+                            height: 1.0,
+                        };
+                        let _: () = msg_send![ns_window, setContentAspectRatio:ns_size];
+                        // Add min-size based on titlebar height compensation
+                        let scale = window.scale_factor().unwrap_or(1.0);
+                        let min_h = (titlebar_h_logical as f64 * scale + 100.0) as f64;
+                        let min_size = cocoa::foundation::NSSize {
+                            width: min_h * r as f64,
+                            height: min_h,
+                        };
+                        let _: () = msg_send![ns_window, setMinSize:min_size];
+
+                        log::info!("macOS preview aspect ratio set to {}", r);
+                    } else {
+                        // Reset to no ratio constraint
+                        let zero_size = cocoa::foundation::NSSize {
+                            width: 0.0,
+                            height: 0.0,
+                        };
+                        let _: () = msg_send![ns_window, setContentAspectRatio:zero_size];
+                        // Reset min size to sensible defaults
+                        let min_size = cocoa::foundation::NSSize {
+                            width: 200.0,
+                            height: 150.0,
+                        };
+                        let _: () = msg_send![ns_window, setMinSize:min_size];
+                    }
+                }
+            }
             }
         }
     }

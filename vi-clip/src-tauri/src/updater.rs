@@ -77,7 +77,7 @@ pub async fn check_update() -> Result<UpdateInfo, String> {
                 let name = asset["name"].as_str().unwrap_or("");
                 let url = asset["browser_download_url"].as_str().unwrap_or("");
                 let lname = name.to_lowercase();
-                if lname.ends_with(".msi") || lname.ends_with(".exe") {
+                if lname.ends_with(".msi") || lname.ends_with(".exe") || lname.ends_with(".dmg") {
                     Some(url.to_string())
                 } else {
                     None
@@ -121,7 +121,14 @@ pub async fn download_and_install_update(url: String) -> Result<(), String> {
     let filename = url
         .split('/')
         .last()
-        .unwrap_or("ViClip_Setup.exe");
+        .unwrap_or_else(|| {
+            #[cfg(target_os = "windows")]
+            { "ViClip_Setup.exe" }
+            #[cfg(target_os = "macos")]
+            { "ViClip.dmg" }
+            #[cfg(not(any(target_os = "windows", target_os = "macos")))]
+            { "ViClip_Setup.bin" }
+        });
     let filepath = temp_dir.join(filename);
 
     std::fs::write(&filepath, &bytes)

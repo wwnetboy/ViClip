@@ -199,7 +199,7 @@ export default function RadialMenu() {
     };
 
     const handleBlur = () => {
-      if (!focusedRef.current) return;
+      // Always hide on blur (user clicked outside or switched apps)
       hide();
     };
 
@@ -288,10 +288,11 @@ export default function RadialMenu() {
   const activeCategory = activeTab === "clipboard" ? clipboardCategory : phraseGroupId;
 
   return (
-    <div className={`radial-menu-overlay${visible ? "" : " radial-menu-hidden"}`}>
+    <div className={`radial-menu-overlay${visible ? "" : " radial-menu-hidden"}`} onMouseDown={hide}>
       <div
         className="radial-menu-popup"
-        onClick={() => {
+        onMouseDown={(e) => {
+          e.stopPropagation();
           if (searchExpandedRef.current) {
             setSearchExpanded(false);
           }

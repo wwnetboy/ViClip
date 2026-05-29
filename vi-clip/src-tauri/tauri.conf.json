@@ -43,6 +43,9 @@
       "wix": {
         "language": "zh-CN"
       }
+    },
+    "macOS": {
+      "minimumSystemVersion": "11.0"
     }
   },
   "plugins": {

@@ -15,7 +15,7 @@
 剪贴板管理 · 快捷短语 · 多引擎翻译 · 图片预览
 
 ![License](https://img.shields.io/badge/license-MIT-blue.svg)
-![Platform](https://img.shields.io/badge/platform-Windows%2010+-brightgreen.svg)
+![Platform](https://img.shields.io/badge/platform-Windows%2010%2B%20%7C%20macOS%2011%2B-brightgreen.svg)
 ![Tauri](https://img.shields.io/badge/Tauri-2.x-ffc131.svg)
 ![React](https://img.shields.io/badge/React-19-61dafb.svg)
 
