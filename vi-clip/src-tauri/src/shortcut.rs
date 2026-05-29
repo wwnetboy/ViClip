@@ -1,4 +1,4 @@
-use std::sync::atomic::{AtomicBool, AtomicPtr, Ordering};
+use std::sync::atomic::{AtomicBool, AtomicIsize, AtomicPtr, Ordering};
 use std::sync::OnceLock;
 use tauri::{AppHandle, Emitter, Manager};
 use tauri_plugin_global_shortcut::GlobalShortcutExt;
@@ -23,6 +23,10 @@ static TOGGLING: AtomicBool = AtomicBool::new(false);
 
 #[cfg(target_os = "windows")]
 static RADIAL_JUST_SHOWN: AtomicBool = AtomicBool::new(false);
+#[cfg(target_os = "windows")]
+static RADIAL_VISIBLE: AtomicBool = AtomicBool::new(false);
+#[cfg(target_os = "windows")]
+static RADIAL_HWND: AtomicIsize = AtomicIsize::new(0);
 
 #[cfg(target_os = "windows")]
 static WIN_KEY_DOWN: AtomicBool = AtomicBool::new(false);
@@ -41,6 +45,12 @@ impl Drop for ToggleGuard {
 #[derive(serde::Serialize, Clone)]
 struct RadialMenuDownPayload {
     theme: String,
+}
+
+#[tauri::command]
+pub fn radial_menu_dismissed() {
+    #[cfg(target_os = "windows")]
+    RADIAL_VISIBLE.store(false, Ordering::SeqCst);
 }
 
 pub fn toggle_window(app: &AppHandle) {
@@ -114,6 +124,11 @@ unsafe extern "system" fn mouse_hook_callback(
 
                         crate::paste::save_foreground_window();
 
+                        // Hide main window so its content doesn't bleed through backdrop blur
+                        if let Some(main) = app.get_webview_window("main") {
+                            let _ = main.hide();
+                        }
+
                         // Allow this process to call SetForegroundWindow
                         unsafe {
                             use windows::Win32::UI::WindowsAndMessaging::AllowSetForegroundWindow;
@@ -135,6 +150,8 @@ unsafe extern "system" fn mouse_hook_callback(
                         );
 
                         RADIAL_JUST_SHOWN.store(true, Ordering::SeqCst);
+                        RADIAL_HWND.store(window.hwnd().unwrap_or_default().0 as isize, Ordering::SeqCst);
+                        RADIAL_VISIBLE.store(true, Ordering::SeqCst);
                         let _ = window.show();
                         let _ = window.set_focus();
                     }
@@ -145,6 +162,26 @@ unsafe extern "system" fn mouse_hook_callback(
 
         if msg == WM_RBUTTONUP && RADIAL_JUST_SHOWN.swap(false, Ordering::SeqCst) {
             return LRESULT(1);
+        }
+
+        // When radial menu is visible, hide it if user clicks outside
+        if RADIAL_VISIBLE.load(Ordering::SeqCst)
+            && !RADIAL_JUST_SHOWN.load(Ordering::SeqCst)
+            && (msg == WM_LBUTTONDOWN || msg == WM_RBUTTONDOWN || msg == WM_MBUTTONDOWN)
+        {
+            let hook_struct = &*(l_param.0 as *const MSLLHOOKSTRUCT);
+            let hwnd_at_point = WindowFromPoint(hook_struct.pt);
+            let root = GetAncestor(hwnd_at_point, GA_ROOT);
+            let radial_hwnd = RADIAL_HWND.load(Ordering::SeqCst);
+            if radial_hwnd != 0 && root.0 as isize != radial_hwnd {
+                RADIAL_VISIBLE.store(false, Ordering::SeqCst);
+                if let Some(app) = APP_HANDLE.get() {
+                    if let Some(window) = app.get_webview_window("radial-menu") {
+                        let _ = window.hide();
+                        app.emit("radial-menu-dismissed", ()).ok();
+                    }
+                }
+            }
         }
     }
 

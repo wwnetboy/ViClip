@@ -3,7 +3,7 @@ import { useTranslationStore } from "../stores/translationStore";
 import { useSettingsStore } from "../stores/settingsStore";
 import { Icons } from "../components/Icons";
 import IosSelect from "../components/IosSelect";
-import { useState, useEffect, useCallback } from "react";
+import { useState, useEffect } from "react";
 import { getLanguagesForEngine, normalizeLangCode } from "../data/languages";
 import i18next from "i18next";
 

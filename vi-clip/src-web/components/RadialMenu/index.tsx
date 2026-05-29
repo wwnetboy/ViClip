@@ -26,7 +26,7 @@ export default function RadialMenu() {
   const [searchQuery, setSearchQuery] = useState("");
   const [searchExpanded, setSearchExpanded] = useState(false);
 
-  const showTimestampRef = useRef(0);
+  const focusedRef = useRef(false);
   const selectedItemIdRef = useRef<string | null>(null);
   const activeTabRef = useRef<TabKey>("clipboard");
   const clipboardCategoryRef = useRef<ClipType>("all");
@@ -74,6 +74,7 @@ export default function RadialMenu() {
     setSelectedItemId(null);
     selectedItemIdRef.current = null;
     getCurrentWindow().hide();
+    invoke("radial_menu_dismissed").catch(() => {});
   }, []);
 
   const handleTabSwitch = useCallback((key: string) => {
@@ -127,7 +128,7 @@ export default function RadialMenu() {
     const setup = async () => {
       const unDown = await listen<{ theme: string }>("radial-menu-down", async (e) => {
         document.documentElement.setAttribute("data-theme", resolveTheme(e.payload.theme as ThemeMode));
-        showTimestampRef.current = Date.now();
+        focusedRef.current = false;
         setVisible(true);
       });
 
@@ -145,7 +146,13 @@ export default function RadialMenu() {
         }));
       });
 
-      unlisteners = [unDown, unSettings];
+      const unDismissed = await listen("radial-menu-dismissed", () => {
+        setVisible(false);
+        setSelectedItemId(null);
+        selectedItemIdRef.current = null;
+      });
+
+      unlisteners = [unDown, unSettings, unDismissed];
     };
 
     setup();
@@ -187,14 +194,19 @@ export default function RadialMenu() {
       }
     };
 
+    const handleFocus = () => {
+      focusedRef.current = true;
+    };
+
     const handleBlur = () => {
-      if (Date.now() - showTimestampRef.current < 500) return;
+      if (!focusedRef.current) return;
       hide();
     };
 
     document.addEventListener("contextmenu", handleContextMenu, true);
     document.addEventListener("wheel", handleWheel, { passive: false });
     document.addEventListener("keydown", handleKeyDown);
+    window.addEventListener("focus", handleFocus);
     window.addEventListener("blur", handleBlur);
 
     return () => {
@@ -202,6 +214,7 @@ export default function RadialMenu() {
       document.removeEventListener("contextmenu", handleContextMenu, true);
       document.removeEventListener("wheel", handleWheel);
       document.removeEventListener("keydown", handleKeyDown);
+      window.removeEventListener("focus", handleFocus);
       window.removeEventListener("blur", handleBlur);
     };
   }, [visible, hide]);

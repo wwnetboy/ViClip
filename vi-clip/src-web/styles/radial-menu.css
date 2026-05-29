@@ -19,8 +19,6 @@
   width: 100%;
   height: 100%;
   background: var(--card-inner-bg);
-  backdrop-filter: blur(80px) saturate(180%);
-  -webkit-backdrop-filter: blur(80px) saturate(180%);
   box-shadow: 0 20px 60px rgba(0, 0, 0, 0.25);
   display: flex;
   flex-direction: column;
@@ -129,9 +127,9 @@
   flex-shrink: 0;
   padding: 4px 12px;
   border-radius: 6px;
-  border: 0.5px solid var(--separator);
-  background: var(--chip-bg);
-  color: var(--text-secondary);
+  border: none;
+  background: rgba(0, 0, 0, 0.05);
+  color: rgba(60, 60, 67, 0.7);
   font-family: var(--font);
   font-size: 11px;
   font-weight: var(--weight-medium);
@@ -142,14 +140,13 @@
 }
 
 .radial-menu-category-chip:hover {
-  background: var(--chip-hover-bg);
-  border-color: rgba(0, 0, 0, 0.1);
+  background: rgba(0, 0, 0, 0.08);
 }
 
 .radial-menu-category-chip.active {
-  background: #333;
-  color: white;
-  border-color: #333;
+  background: rgba(0, 0, 0, 0.1);
+  color: rgba(60, 60, 67, 0.9);
+  box-shadow: 0 0 0 0.5px rgba(0, 0, 0, 0.12);
 }
 
 [data-theme="dark"] .radial-menu-category-chip, [data-theme="dark-solid"] .radial-menu-category-chip, [data-theme="deep-blue"] .radial-menu-category-chip {

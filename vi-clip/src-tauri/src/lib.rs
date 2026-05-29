@@ -416,7 +416,10 @@ pub fn run() {
                     .visible(false)
                     .shadow(false)
                     .skip_taskbar(true)
-                    .resizable(false),
+                    .resizable(false)
+                    .initialization_script(
+                        "document.documentElement.style.background='transparent';document.body.style.background='transparent';",
+                    ),
                     "radial-menu",
                 )?;
 
@@ -551,6 +554,7 @@ pub fn run() {
             translator::translate,
             shortcut::update_shortcut,
             shortcut::set_radial_menu_enabled,
+            shortcut::radial_menu_dismissed,
             tray::update_tray_language,
             preview_lock::set_preview_aspect_ratio,
             apply_preview_backdrop,
