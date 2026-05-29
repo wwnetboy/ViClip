@@ -98,14 +98,28 @@ ViClip 是一款轻量级桌面效率套件，以悬浮窗形式呈现，关闭�
 
 ## 下载安装
 
-前往 [Releases](https://github.com/wwnetboy/ViClip/releases) 页面下载最新安装包：
+### macOS (Apple Silicon, macOS 11+)
+
+**方式一：Homebrew Cask（推荐）**
+```bash
+brew tap wwnetboy/viclip https://github.com/wwnetboy/ViClip
+brew install --cask viclip
+```
+
+**方式二：手动安装**
+1. 前往 [Releases](https://github.com/wwnetboy/ViClip/releases) 下载 `ViClip.app.zip`
+2. 解压后将 `ViClip.app` 拖到 `/Applications`
+3. 首次打开如提示"已损坏"，终端运行 `xattr -cr /Applications/ViClip.app`
+4. 前往「系统设置 → 隐私与安全性 → 辅助功能」添加 ViClip（粘贴功能需要）
+
+### Windows (Windows 10+)
+
+前往 [Releases](https://github.com/wwnetboy/ViClip/releases) 页面下载：
 
 | 安装包 | 说明 |
 |:---|:---|
 | `ViClip_x.x.x_x64-setup.exe` | NSIS 安装包 |
 | `ViClip_x.x.x_x64_zh-CN.msi` | MSI 安装包（中文） |
-
-**系统要求**：Windows 10+
 
 ## 操作说明
 

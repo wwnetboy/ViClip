@@ -98,14 +98,28 @@ ViClip is a lightweight desktop productivity suite that appears as a floating wi
 
 ## Download
 
+### macOS (Apple Silicon, macOS 11+)
+
+**Option 1: Homebrew Cask (Recommended)**
+```bash
+brew tap wwnetboy/viclip https://github.com/wwnetboy/ViClip
+brew install --cask viclip
+```
+
+**Option 2: Manual Install**
+1. Go to [Releases](https://github.com/wwnetboy/ViClip/releases) and download `ViClip.app.zip`
+2. Unzip and drag `ViClip.app` to `/Applications`
+3. If macOS says the app is damaged, run: `xattr -cr /Applications/ViClip.app`
+4. Go to System Settings → Privacy & Security → Accessibility and add ViClip (required for paste)
+
+### Windows (Windows 10+)
+
 Go to the [Releases](https://github.com/wwnetboy/ViClip/releases) page to download the latest installer:
 
 | Package | Description |
 |:---|:---|
 | `ViClip_x.x.x_x64-setup.exe` | NSIS Installer |
 | `ViClip_x.x.x_x64_zh-CN.msi` | MSI Installer (Chinese) |
-
-**System Requirements**: Windows 10+
 
 ## Usage Guide
 
