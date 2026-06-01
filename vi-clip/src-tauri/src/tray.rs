@@ -46,7 +46,7 @@ fn build_tray_menu(app: &AppHandle, lang: &str) -> Result<tauri::menu::Menu<taur
     let sep1 = PredefinedMenuItem::separator(app)?;
     let sep2 = PredefinedMenuItem::separator(app)?;
     let sep3 = PredefinedMenuItem::separator(app)?;
-    let sep4 = PredefinedMenuItem::separator(app)?;
+    let _sep4 = PredefinedMenuItem::separator(app)?;
     let prefs = MenuItemBuilder::with_id("preferences", prefs_text).build(app)?;
     let radial = MenuItemBuilder::with_id("radial-menu", radial_text).build(app)?;
     let quit = MenuItemBuilder::with_id("quit", quit_text).build(app)?;
