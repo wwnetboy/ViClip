@@ -75,8 +75,19 @@ pub fn create_tray(app: &AppHandle) -> Result<(), Box<dyn std::error::Error>> {
     let img = image::load_from_memory(icon_bytes)
         .expect("Failed to decode tray icon")
         .into_rgba8();
-    let (w, h) = img.dimensions();
-    let icon = tauri::image::Image::new_owned(img.into_raw(), w, h);
+
+    // Render the tray icon at the shell's real size: 16 logical px times the
+    // primary display scale. Handing the shell a full-size RGBA source makes
+    // Windows squash it with nearest-neighbor sampling — visibly pixelated.
+    let scale = app
+        .primary_monitor()
+        .ok()
+        .flatten()
+        .map(|m| m.scale_factor())
+        .unwrap_or(1.0);
+    let side = ((16.0 * scale).round() as u32).clamp(16, 64);
+    let resized = image::imageops::resize(&img, side, side, image::imageops::FilterType::Lanczos3);
+    let icon = tauri::image::Image::new_owned(resized.into_raw(), side, side);
 
     let tray = TrayIconBuilder::new()
         .icon(icon)
@@ -229,6 +240,7 @@ pub fn create_tray(app: &AppHandle) -> Result<(), Box<dyn std::error::Error>> {
                             let _ = window.unminimize();
                             window.show().ok();
                             window.set_focus().ok();
+                            app.emit("main-window-shown", ()).ok();
                         }
                     }
                 }
