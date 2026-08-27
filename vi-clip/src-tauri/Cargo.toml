@@ -1,6 +1,6 @@
 [package]
 name = "vi-clip"
-version = "1.0.8"
+version = "1.0.9"
 description = "ViClip - PC clipboard manager, quick phrases, and translation tool"
 authors = ["wwnetboy"]
 license = "MIT"
