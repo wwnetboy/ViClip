@@ -639,23 +639,17 @@ pub fn run() {
 
             if let Ok(key) = db::get_setting(app.handle().clone(), "shortcut_key".to_string()) {
                 let shortcut = if key.is_empty() { "Alt+V".to_string() } else { key };
-                if shortcut.starts_with("Super+") {
-                    #[cfg(target_os = "windows")]
-                    {
-                        // On Windows, Win+key combos use the low-level keyboard
-                        // hook for interception. Don't register via plugin.
-                        shortcut::install_keyboard_hook();
+                // On Windows: all main-window shortcuts use the low-level keyboard hook.
+                #[cfg(target_os = "windows")]
+                {
+                    shortcut::install_keyboard_hook(&shortcut);
+                }
+                // On macOS/Linux: register via the global-shortcut plugin.
+                #[cfg(not(target_os = "windows"))]
+                {
+                    if let Err(e) = shortcut::register_keyboard_shortcut(app.handle(), &shortcut) {
+                        log::warn!("Failed to register shortcut '{}': {}", shortcut, e);
                     }
-                    #[cfg(not(target_os = "windows"))]
-                    {
-                        // On macOS/Linux, Super/Cmd is a normal modifier.
-                        // Register via the global-shortcut plugin.
-                        if let Err(e) = shortcut::register_keyboard_shortcut(app.handle(), &shortcut) {
-                            log::warn!("Failed to register shortcut '{}': {}", shortcut, e);
-                        }
-                    }
-                } else if let Err(e) = shortcut::register_keyboard_shortcut(app.handle(), &shortcut) {
-                    log::warn!("Failed to register keyboard shortcut '{}': {}", shortcut, e);
                 }
             }
 
@@ -706,6 +700,7 @@ pub fn run() {
             db::select_storage_folder,
             translator::translate,
             shortcut::update_shortcut,
+            shortcut::set_hook_paused,
             shortcut::set_radial_menu_enabled,
             shortcut::radial_menu_dismissed,
             tray::update_tray_language,
@@ -722,10 +717,12 @@ pub fn run() {
             // macOS: show main window when Dock icon is clicked
             #[cfg(target_os = "macos")]
             if let tauri::RunEvent::Reopen { .. } = &event {
+                use tauri::Emitter;
                 if let Some(window) = _handle.get_webview_window("main") {
                     let _ = window.unminimize();
                     let _ = window.show();
                     let _ = window.set_focus();
+                    let _ = _handle.emit("main-window-shown", ());
                     log::info!("Dock click: showing main window");
                 }
             }

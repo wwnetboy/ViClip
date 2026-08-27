@@ -29,6 +29,16 @@ static WIN_KEY_DOWN: AtomicBool = AtomicBool::new(false);
 #[cfg(target_os = "windows")]
 static WIN_KEY_USED: AtomicBool = AtomicBool::new(false);
 
+/// Parsed shortcut state for the keyboard hook.
+/// Stores: (needs_ctrl, needs_alt, needs_shift, needs_win, vk_code)
+#[cfg(target_os = "windows")]
+static HOOK_SHORTCUT: std::sync::Mutex<(bool, bool, bool, bool, u32)> =
+    std::sync::Mutex::new((false, false, false, false, 0));
+
+/// When true, the keyboard hook passes through all keys without intercepting.
+/// Used while the user is recording a new shortcut in settings.
+static HOOK_PAUSED: AtomicBool = AtomicBool::new(false);
+
 /// RAII guard that ensures TOGGLING is always reset, even on panic.
 struct ToggleGuard;
 
@@ -143,6 +153,7 @@ pub fn toggle_window(app: &AppHandle) {
             let _ = window.unminimize();
             let _ = window.show();
             let _ = window.set_focus();
+            let _ = app.emit("main-window-shown", ());
         }
     } else {
         log::warn!("[toggle_window] main window not found");
@@ -248,6 +259,76 @@ unsafe extern "system" fn mouse_hook_callback(
     unsafe { CallNextHookEx(hook, n_code, w_param, l_param) }
 }
 
+/// Parse a shortcut string like "Alt+V", "Ctrl+Shift+K", "Super+V" into
+/// (needs_ctrl, needs_alt, needs_shift, needs_win, vk_code).
+#[cfg(target_os = "windows")]
+fn parse_shortcut(shortcut: &str) -> Option<(bool, bool, bool, bool, u32)> {
+    let parts: Vec<&str> = shortcut.split('+').collect();
+    if parts.is_empty() {
+        return None;
+    }
+
+    let mut ctrl = false;
+    let mut alt = false;
+    let mut shift = false;
+    let mut win = false;
+    let mut vk: u32 = 0;
+
+    for (i, part) in parts.iter().enumerate() {
+        let p = part.trim();
+        if i < parts.len() - 1 {
+            // Modifier
+            match p {
+                "Ctrl" => ctrl = true,
+                "Alt" => alt = true,
+                "Shift" => shift = true,
+                "Super" => win = true,
+                _ => return None,
+            }
+        } else {
+            // Last part = key
+            let first = p.chars().next();
+            if p.len() == 1 && first.map_or(false, |c| c.is_ascii_alphabetic()) {
+                vk = first.unwrap().to_ascii_uppercase() as u32; // 'A' = 0x41, etc.
+            } else if p.len() == 1 && first.map_or(false, |c| c.is_ascii_digit()) {
+                vk = p.as_bytes()[0] as u32; // '0' = 0x30, etc.
+            } else if p.starts_with("NumPad") {
+                if let Some(d) = p.chars().last().and_then(|c| c.to_digit(10)) {
+                    vk = 0x60 + d; // VK_NUMPAD0 = 0x60
+                } else {
+                    return None;
+                }
+            } else if p == "Space" {
+                vk = 0x20; // VK_SPACE
+            } else if p == "F1" || p == "F2" || p == "F3" || p == "F4"
+                || p == "F5" || p == "F6" || p == "F7" || p == "F8"
+                || p == "F9" || p == "F10" || p == "F11" || p == "F12"
+            {
+                let n: u32 = p[1..].parse().ok()?;
+                vk = 0x70 + n - 1; // VK_F1 = 0x70
+            } else {
+                return None;
+            }
+        }
+    }
+
+    if vk == 0 || (!ctrl && !alt && !shift && !win) {
+        return None;
+    }
+
+    Some((ctrl, alt, shift, win, vk))
+}
+
+/// Update the stored shortcut used by the keyboard hook.
+#[cfg(target_os = "windows")]
+fn set_hook_shortcut(shortcut: &str) {
+    if let Some(parsed) = parse_shortcut(shortcut) {
+        if let Ok(mut s) = HOOK_SHORTCUT.lock() {
+            *s = parsed;
+        }
+    }
+}
+
 #[cfg(target_os = "windows")]
 unsafe extern "system" fn keyboard_hook_callback(
     n_code: i32,
@@ -255,35 +336,83 @@ unsafe extern "system" fn keyboard_hook_callback(
     l_param: LPARAM,
 ) -> LRESULT {
     if n_code >= 0 {
-        let vk_code = (l_param.0 as *const KBDLLHOOKSTRUCT).as_ref().map(|s| s.vkCode).unwrap_or(0);
+        // When recording a new shortcut, pass through all keys
+        if HOOK_PAUSED.load(Ordering::SeqCst) {
+            let hook = HHOOK(KB_HOOK_HANDLE.load(Ordering::SeqCst));
+            return unsafe { CallNextHookEx(hook, n_code, w_param, l_param) };
+        }
 
-        let is_win = vk_code == VK_LWIN.0 as u32 || vk_code == VK_RWIN.0 as u32;
-        let is_v = vk_code == 0x56; // 'V'
+        let kb = (l_param.0 as *const KBDLLHOOKSTRUCT).as_ref();
+        let vk_code = kb.map(|s| s.vkCode).unwrap_or(0);
 
         let is_keydown = w_param.0 == WM_KEYDOWN as usize || w_param.0 == WM_SYSKEYDOWN as usize;
         let is_keyup = w_param.0 == WM_KEYUP as usize || w_param.0 == WM_SYSKEYUP as usize;
 
+        // Read the current shortcut target
+        let (need_ctrl, need_alt, need_shift, need_win, target_vk) =
+            HOOK_SHORTCUT.lock().map(|s| *s).unwrap_or((false, false, false, false, 0));
+
+        if target_vk == 0 || !need_win && !need_ctrl && !need_alt && !need_shift {
+            // No shortcut configured — pass through
+            let hook = HHOOK(KB_HOOK_HANDLE.load(Ordering::SeqCst));
+            return unsafe { CallNextHookEx(hook, n_code, w_param, l_param) };
+        }
+
+        let is_win = vk_code == VK_LWIN.0 as u32 || vk_code == VK_RWIN.0 as u32;
+
+        // Use GetAsyncKeyState for reliable modifier state at hook time
+        let ctrl_pressed;
+        let alt_pressed;
+        let shift_pressed;
+        let win_pressed;
+        unsafe {
+            ctrl_pressed = GetAsyncKeyState(VK_CONTROL.0 as i32) as u16 & 0x8000 != 0;
+            alt_pressed = GetAsyncKeyState(VK_MENU.0 as i32) as u16 & 0x8000 != 0;
+            shift_pressed = GetAsyncKeyState(VK_SHIFT.0 as i32) as u16 & 0x8000 != 0;
+            win_pressed = GetAsyncKeyState(VK_LWIN.0 as i32) as u16 & 0x8000 != 0
+                || GetAsyncKeyState(VK_RWIN.0 as i32) as u16 & 0x8000 != 0;
+        }
+
+        // Track Win key state for Start menu suppression
         if is_keydown && is_win {
             WIN_KEY_DOWN.store(true, Ordering::SeqCst);
             WIN_KEY_USED.store(false, Ordering::SeqCst);
-            // Pass through so other Win+key combos still work
-        }
-
-        if is_keydown && is_v && WIN_KEY_DOWN.load(Ordering::SeqCst) {
-            WIN_KEY_USED.store(true, Ordering::SeqCst);
-            if let Some(app) = APP_HANDLE.get() {
-                toggle_window(app);
+            // When the shortcut needs Win, consume the Win keydown to fully
+            // prevent Windows from seeing Win+V (clipboard history) or other
+            // system shortcuts. If Win is released without a combo, we'll
+            // simulate a Start menu press below.
+            if need_win {
+                return LRESULT(1); // consume Win keydown
             }
-            return LRESULT(1); // consume the V keydown
         }
 
+        // Check if the target key was pressed with the correct modifiers
+        if is_keydown && vk_code == target_vk {
+            let ctrl_ok = need_ctrl == ctrl_pressed;
+            let alt_ok = need_alt == alt_pressed;
+            let shift_ok = need_shift == shift_pressed;
+            let win_ok = need_win == win_pressed;
+
+            if ctrl_ok && alt_ok && shift_ok && win_ok {
+                // For Win-key shortcuts, mark as used to suppress Start menu
+                if need_win {
+                    WIN_KEY_USED.store(true, Ordering::SeqCst);
+                }
+                if let Some(app) = APP_HANDLE.get() {
+                    toggle_window(app);
+                }
+                return LRESULT(1); // consume the keydown
+            }
+        }
+
+        // Handle Win keyup: suppress or simulate Start menu
         if is_keyup && is_win {
             let was_used = WIN_KEY_USED.swap(false, Ordering::SeqCst);
             WIN_KEY_DOWN.store(false, Ordering::SeqCst);
-            if was_used {
-                // Suppress the Start menu but inject a synthetic Win keyup
-                // so the system doesn't think Win is stuck pressed.
-                let inputs = [
+            if need_win {
+                // We consumed the Win keydown above, so the system never saw it.
+                // Inject a synthetic keyup so the OS doesn't think Win is stuck.
+                let inputs_up = [
                     INPUT {
                         r#type: INPUT_KEYBOARD,
                         Anonymous: INPUT_0 {
@@ -297,8 +426,43 @@ unsafe extern "system" fn keyboard_hook_callback(
                         },
                     },
                 ];
-                SendInput(&inputs, std::mem::size_of::<INPUT>() as i32);
-                return LRESULT(1);
+                SendInput(&inputs_up, std::mem::size_of::<INPUT>() as i32);
+                if !was_used {
+                    // Win was pressed alone (no combo) — simulate Start menu tap
+                    let zero_flags;
+                    unsafe { zero_flags = std::mem::zeroed(); }
+                    let inputs_down = [
+                        INPUT {
+                            r#type: INPUT_KEYBOARD,
+                            Anonymous: INPUT_0 {
+                                ki: KEYBDINPUT {
+                                    wVk: VK_LWIN,
+                                    wScan: 0,
+                                    dwFlags: zero_flags,
+                                    time: 0,
+                                    dwExtraInfo: 0,
+                                },
+                            },
+                        },
+                    ];
+                    let inputs_tap = [
+                        INPUT {
+                            r#type: INPUT_KEYBOARD,
+                            Anonymous: INPUT_0 {
+                                ki: KEYBDINPUT {
+                                    wVk: VK_LWIN,
+                                    wScan: 0,
+                                    dwFlags: KEYEVENTF_KEYUP,
+                                    time: 0,
+                                    dwExtraInfo: 0,
+                                },
+                            },
+                        },
+                    ];
+                    SendInput(&inputs_down, std::mem::size_of::<INPUT>() as i32);
+                    SendInput(&inputs_tap, std::mem::size_of::<INPUT>() as i32);
+                }
+                return LRESULT(1); // consume the real keyup
             }
         }
     }
@@ -486,19 +650,27 @@ pub fn install_mouse_hook(app: &AppHandle) {
 }
 
 #[cfg(target_os = "windows")]
-pub fn install_keyboard_hook() {
+pub fn install_keyboard_hook(shortcut: &str) {
+    set_hook_shortcut(shortcut);
+
+    // If hook already installed, just update the shortcut target
+    if !KB_HOOK_HANDLE.load(Ordering::SeqCst).is_null() {
+        return;
+    }
+
     let hook = unsafe {
         SetWindowsHookExW(WH_KEYBOARD_LL, Some(keyboard_hook_callback), None, 0)
     };
     if let Ok(h) = hook {
         KB_HOOK_HANDLE.store(h.0, Ordering::SeqCst);
-        log::info!("Win+V keyboard hook installed");
+        log::info!("Keyboard hook installed for shortcut: {}", shortcut);
     } else {
-        log::warn!("Failed to install Win+V keyboard hook");
+        log::warn!("Failed to install keyboard hook");
     }
 }
 
 #[cfg(target_os = "windows")]
+#[allow(dead_code)]
 pub fn uninstall_keyboard_hook() {
     let handle = KB_HOOK_HANDLE.swap(core::ptr::null_mut(), Ordering::SeqCst);
     if !handle.is_null() {
@@ -506,12 +678,12 @@ pub fn uninstall_keyboard_hook() {
             let hhook = HHOOK(handle);
             let _ = UnhookWindowsHookEx(hhook);
         }
-        log::info!("Win+V keyboard hook uninstalled");
+        log::info!("Keyboard hook uninstalled");
     }
 }
 
 #[cfg(not(target_os = "windows"))]
-pub fn install_keyboard_hook() {}
+pub fn install_keyboard_hook(_shortcut: &str) {}
 
 #[cfg(not(target_os = "windows"))]
 pub fn uninstall_keyboard_hook() {}
@@ -527,6 +699,7 @@ pub fn register_keyboard_shortcut(
     Ok(())
 }
 
+#[allow(dead_code)]
 pub fn unregister_keyboard_shortcut(
     app: &AppHandle,
     shortcut: &str,
@@ -539,44 +712,33 @@ pub fn unregister_keyboard_shortcut(
 }
 
 #[tauri::command]
+#[allow(unused_variables)]
 pub fn update_shortcut(
     app: AppHandle,
-    old_shortcut: String,
+    old_shortcut: String, // used on non-Windows platforms
     new_shortcut: String,
 ) -> Result<(), String> {
     let new_key = if new_shortcut.is_empty() { "Alt+V".to_string() } else { new_shortcut };
 
+    // Unregister old shortcut from the plugin (for non-Windows platforms)
+    #[cfg(not(target_os = "windows"))]
     if !old_shortcut.is_empty() && old_shortcut != new_key {
         let _ = unregister_keyboard_shortcut(&app, &old_shortcut);
     }
 
-    // Toggle keyboard hook for Win-key shortcuts (Windows only)
+    // On Windows: all shortcuts are handled by the keyboard hook.
+    // Just update the hook's shortcut target — no plugin registration needed.
     #[cfg(target_os = "windows")]
     {
-        let old_is_win = old_shortcut.starts_with("Super+");
-        let new_is_win = new_key.starts_with("Super+");
-        if !old_is_win && new_is_win {
-            install_keyboard_hook();
-        } else if old_is_win && !new_is_win {
-            uninstall_keyboard_hook();
-        }
+        let _ = &app; // suppress unused warning
+        install_keyboard_hook(&new_key);
     }
 
-    // Register the shortcut via global-shortcut plugin.
-    // On Windows, Win+key combos are handled by the keyboard hook above,
-    // so we skip plugin registration to avoid double-firing.
-    // On macOS/Linux, Super/Cmd is a normal modifier — always register.
+    // On macOS/Linux: register via global-shortcut plugin as before.
     #[cfg(not(target_os = "windows"))]
     {
         register_keyboard_shortcut(&app, &new_key)
             .map_err(|e| format!("Failed to register shortcut: {}", e))?;
-    }
-    #[cfg(target_os = "windows")]
-    {
-        if !new_key.starts_with("Super+") {
-            register_keyboard_shortcut(&app, &new_key)
-                .map_err(|e| format!("Failed to register shortcut: {}", e))?;
-        }
     }
     Ok(())
 }
@@ -591,5 +753,10 @@ pub fn set_radial_menu_enabled(app: AppHandle, enabled: bool) -> Result<(), Stri
         rusqlite::params![if enabled { "1" } else { "0" }],
     ).map_err(|e| e.to_string())?;
     Ok(())
+}
+
+#[tauri::command]
+pub fn set_hook_paused(paused: bool) {
+    HOOK_PAUSED.store(paused, Ordering::SeqCst);
 }
 

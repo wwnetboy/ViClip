@@ -150,10 +150,13 @@ export default function SettingsContent({ embedded }: Props) {
   const startRecording = () => {
     recordingRef.current = true;
     setRecording(true);
+    // Pause the keyboard hook so it doesn't intercept keys during recording
+    invoke("set_hook_paused", { paused: true });
 
     const cleanup = () => {
       document.removeEventListener("keydown", handler, true);
       keydownHandlerRef.current = null;
+      invoke("set_hook_paused", { paused: false });
     };
 
     const handler = (e: KeyboardEvent) => {
@@ -166,7 +169,16 @@ export default function SettingsContent({ embedded }: Props) {
         return;
       }
 
-      if (!e.ctrlKey && !e.altKey && !e.shiftKey && !e.metaKey) {
+      // On Windows, metaKey combos (Win+key) cannot be intercepted by JS and
+      // trigger system actions (e.g. Win+V opens clipboard history).
+      // Win+V has a dedicated toggle switch — block recording these combos.
+      if (e.metaKey) {
+        e.preventDefault();
+        e.stopPropagation();
+        return;
+      }
+
+      if (!e.ctrlKey && !e.altKey && !e.shiftKey) {
         return;
       }
 
@@ -177,7 +189,6 @@ export default function SettingsContent({ embedded }: Props) {
       if (e.ctrlKey) parts.push("Ctrl");
       if (e.altKey) parts.push("Alt");
       if (e.shiftKey) parts.push("Shift");
-      if (e.metaKey) parts.push("Super");
 
       const code = e.code;
       let keyName: string;
@@ -211,6 +222,7 @@ export default function SettingsContent({ embedded }: Props) {
       document.removeEventListener("keydown", keydownHandlerRef.current, true);
       keydownHandlerRef.current = null;
     }
+    invoke("set_hook_paused", { paused: false });
   };
 
   const content = (
