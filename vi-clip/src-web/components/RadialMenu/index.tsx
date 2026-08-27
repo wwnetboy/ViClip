@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState, useCallback, useMemo } from "react";
+import { useEffect, useRef, useState, useCallback, useMemo, type CSSProperties } from "react";
 import { useTranslation } from "react-i18next";
 import { listen, type UnlistenFn } from "@tauri-apps/api/event";
 import { getCurrentWindow } from "@tauri-apps/api/window";
@@ -25,6 +25,13 @@ export default function RadialMenu() {
   const [phraseGroupId, setPhraseGroupId] = useState<string | null>(null);
   const [searchQuery, setSearchQuery] = useState("");
   const [searchExpanded, setSearchExpanded] = useState(false);
+  // List content switch animation: "out" shows a frozen snapshot of the old
+  // list while it fades away, then "in" staggers the new items in.
+  const switchKey = `${activeTab}:${phraseGroupId ?? clipboardCategory}`;
+  const [listPhase, setListPhase] = useState<"live" | "out" | "in">("live");
+  const animKeyRef = useRef(switchKey);
+  const listTimerRef = useRef<number | undefined>(undefined);
+  const listRef = useRef<HTMLDivElement>(null);
 
   const focusedRef = useRef(false);
   const selectedItemIdRef = useRef<string | null>(null);
@@ -69,13 +76,25 @@ export default function RadialMenu() {
     };
   }, []);
 
+  // Collapse the search pill and drop the query — used when leaving search mode
+  // (outside click, icon toggle) and whenever the menu is hidden or re-shown.
+  const resetSearch = useCallback(() => {
+    setSearchExpanded(false);
+    setSearchQuery("");
+    searchExpandedRef.current = false;
+    searchQueryRef.current = "";
+  }, []);
+
   const hide = useCallback(() => {
     setVisible(false);
     setSelectedItemId(null);
     selectedItemIdRef.current = null;
+    resetSearch();
+    window.clearTimeout(listTimerRef.current);
+    setListPhase("live");
     getCurrentWindow().hide();
     invoke("radial_menu_dismissed").catch(() => {});
-  }, []);
+  }, [resetSearch]);
 
   const handleTabSwitch = useCallback((key: string) => {
     const tab = key as TabKey;
@@ -129,7 +148,12 @@ export default function RadialMenu() {
       const unDown = await listen<{ theme: string }>("radial-menu-down", async (e) => {
         document.documentElement.setAttribute("data-theme", resolveTheme(e.payload.theme as ThemeMode));
         focusedRef.current = false;
+        resetSearch();
         setVisible(true);
+        // Fresh popup: reset scroll and replay the staggered entrance.
+        if (listRef.current) listRef.current.scrollTop = 0;
+        setListPhase("live");
+        window.setTimeout(() => setListPhase("in"), 30);
       });
 
       // Sync settings from main window via event bus, avoiding per-show IPC
@@ -150,6 +174,9 @@ export default function RadialMenu() {
         setVisible(false);
         setSelectedItemId(null);
         selectedItemIdRef.current = null;
+        resetSearch();
+        window.clearTimeout(listTimerRef.current);
+        setListPhase("live");
       });
 
       unlisteners = [unDown, unSettings, unDismissed];
@@ -217,7 +244,7 @@ export default function RadialMenu() {
       window.removeEventListener("focus", handleFocus);
       window.removeEventListener("blur", handleBlur);
     };
-  }, [visible, hide]);
+  }, [visible, hide, resetSearch]);
 
   const records = useClipboardStore((s) => s.records);
   const phraseGroups = usePhraseStore((s) => s.groups);
@@ -272,6 +299,32 @@ export default function RadialMenu() {
         }));
   }, [activeTab, filteredRecords, phrases, searchQuery, t]);
 
+  // --- List switch animation (category / tab hover) ---
+  // committedRef tracks what is on screen; at switch time it is copied into
+  // state (leavingItems) and frozen while the old list fades out.
+  const committedRef = useRef(items);
+  const [leavingItems, setLeavingItems] = useState(items);
+
+  useEffect(() => {
+    if (animKeyRef.current === switchKey) return;
+    animKeyRef.current = switchKey;
+    window.clearTimeout(listTimerRef.current);
+    setLeavingItems(committedRef.current);
+    setListPhase("out");
+    listTimerRef.current = window.setTimeout(() => {
+      if (listRef.current) listRef.current.scrollTop = 0;
+      setListPhase("in");
+    }, 110);
+  }, [switchKey]);
+
+  // Keep the committed snapshot in sync, so the next switch always fades out
+  // from what the user actually sees (incl. live search results).
+  useEffect(() => {
+    if (listPhase !== "out") committedRef.current = items;
+  }, [items, listPhase]);
+
+  useEffect(() => () => window.clearTimeout(listTimerRef.current), []);
+
   const categories = activeTab === "clipboard"
     ? [
         { key: "all", label: t("clipboard.all") },
@@ -286,6 +339,7 @@ export default function RadialMenu() {
       }));
 
   const activeCategory = activeTab === "clipboard" ? clipboardCategory : phraseGroupId;
+  const displayItems = listPhase === "out" ? leavingItems : items;
 
   return (
     <div className={`radial-menu-overlay${visible ? "" : " radial-menu-hidden"}`} onMouseDown={hide}>
@@ -293,8 +347,10 @@ export default function RadialMenu() {
         className="radial-menu-popup"
         onMouseDown={(e) => {
           e.stopPropagation();
+          // Click outside the search pill collapses it; clicks inside the
+          // pill are stopped by .radial-menu-search so typing keeps it open.
           if (searchExpandedRef.current) {
-            setSearchExpanded(false);
+            resetSearch();
           }
         }}
       >
@@ -329,18 +385,19 @@ export default function RadialMenu() {
         )}
 
         <div
-          className="radial-menu-search"
+          className={`radial-menu-search${searchExpanded ? " expanded" : ""}`}
           onClick={(e) => e.stopPropagation()}
+          onMouseDown={(e) => e.stopPropagation()}
         >
           <div className={`radial-menu-search-pill${searchExpanded ? " expanded" : ""}`}>
             <button
               className="radial-menu-search-icon"
               onClick={() => {
                 if (searchExpanded) {
-                  setSearchExpanded(false);
-                  setSearchQuery("");
+                  resetSearch();
                 } else {
                   setSearchExpanded(true);
+                  searchExpandedRef.current = true;
                   setTimeout(() => searchInputRef.current?.focus(), 100);
                 }
               }}
@@ -361,15 +418,19 @@ export default function RadialMenu() {
           </div>
         </div>
 
-        <div className="radial-menu-list" data-radial-list>
-          {items.length === 0 ? (
+        <div className="radial-menu-list" data-radial-list ref={listRef}>
+          <div
+            className={`radial-menu-list-inner${listPhase === "out" ? " leaving" : listPhase === "in" ? " entering" : ""}`}
+          >
+          {displayItems.length === 0 ? (
             <div className="radial-menu-empty">{t("radialMenu.empty")}</div>
           ) : (
-            items.map((item) => (
+            displayItems.map((item, index) => (
               <div
                 key={item.id}
                 className={`radial-menu-item ${selectedItemId === item.id ? "selected" : ""}`}
                 data-radial-item-id={item.id}
+                style={{ "--enter-delay": index } as CSSProperties}
                 onMouseEnter={() => {
                   setSelectedItemId(item.id);
                   selectedItemIdRef.current = item.id;
@@ -414,6 +475,7 @@ export default function RadialMenu() {
               </div>
             ))
           )}
+          </div>
         </div>
       </div>
     </div>

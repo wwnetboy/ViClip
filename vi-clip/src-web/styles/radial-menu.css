@@ -19,6 +19,7 @@
   width: 100%;
   height: 100%;
   background: var(--card-inner-bg);
+  --radial-search-fade: rgba(255, 255, 255, 0.92);
   box-shadow: 0 20px 60px rgba(0, 0, 0, 0.25);
   display: flex;
   flex-direction: column;
@@ -34,16 +35,21 @@
   box-shadow: 0 20px 60px rgba(0, 0, 0, 0.5);
 }
 
+/* Transparent theme: raise the tint opacity so bright desktop content
+   doesn't wash out the white text sitting on it. */
 [data-theme="dark"] .radial-menu-popup {
-  background: rgba(30, 30, 30, 0.60);
+  background: rgba(30, 30, 30, 0.70);
+  --radial-search-fade: rgba(30, 30, 30, 0.35);
 }
 
 [data-theme="dark-solid"] .radial-menu-popup {
   background: #2C2C2E;
+  --radial-search-fade: rgba(44, 44, 46, 0.9);
 }
 
 [data-theme="deep-blue"] .radial-menu-popup {
   background: #101D33;
+  --radial-search-fade: rgba(16, 29, 51, 0.9);
 }
 
 @keyframes radialMenuIn {
@@ -100,6 +106,12 @@
 [data-theme="dark"] .radial-menu-nav-tab.active, [data-theme="dark-solid"] .radial-menu-nav-tab.active, [data-theme="deep-blue"] .radial-menu-nav-tab.active {
   background: rgba(255, 255, 255, 0.08);
   color: rgba(255, 255, 255, 0.95);
+}
+
+/* Transparent theme sits on acrylic — brighten secondary text that would
+   otherwise sink into the translucent surface. */
+[data-theme="dark"] .radial-menu-nav-tab {
+  color: rgba(255, 255, 255, 0.72);
 }
 
 .radial-menu-nav-label {
@@ -161,6 +173,10 @@
   border-color: rgba(255, 255, 255, 0.25);
 }
 
+[data-theme="dark"] .radial-menu-category-chip {
+  color: rgba(255, 255, 255, 0.68);
+}
+
 /* --- Item List --- */
 .radial-menu-list {
   flex: 1;
@@ -185,6 +201,34 @@
 
 [data-theme="dark"] .radial-menu-list::-webkit-scrollbar-thumb, [data-theme="dark-solid"] .radial-menu-list::-webkit-scrollbar-thumb, [data-theme="deep-blue"] .radial-menu-list::-webkit-scrollbar-thumb {
   background: rgba(255, 255, 255, 0.15);
+}
+
+/* --- List switch transition (hover category / tab switch) ---
+   Out: the committed snapshot rises 6px and fades. In: new items float up
+   with a capped stagger. `translate` (not `transform`) so the existing
+   .selected scale keeps working alongside the keyframes. */
+.radial-menu-list-inner.leaving {
+  animation: radialListOut 0.11s ease-in forwards;
+}
+
+.radial-menu-list-inner.entering .radial-menu-item,
+.radial-menu-list-inner.entering .radial-menu-empty {
+  animation: radialItemIn 0.22s cubic-bezier(0.22, 1, 0.36, 1) backwards;
+  animation-delay: calc(min(var(--enter-delay, 0), 10) * 24ms);
+}
+
+@keyframes radialListOut {
+  to {
+    opacity: 0;
+    translate: 0 -6px;
+  }
+}
+
+@keyframes radialItemIn {
+  from {
+    opacity: 0;
+    translate: 0 10px;
+  }
 }
 
 /* --- Item --- */
@@ -239,6 +283,10 @@
   color: rgba(255, 255, 255, 0.4);
 }
 
+[data-theme="dark"] .radial-menu-item-time {
+  color: rgba(255, 255, 255, 0.55);
+}
+
 .radial-menu-item-remark {
   font-size: var(--text-xs);
   color: var(--text-secondary);
@@ -253,7 +301,13 @@
   color: rgba(255, 255, 255, 0.4);
 }
 
+[data-theme="dark"] .radial-menu-item-remark {
+  color: rgba(255, 255, 255, 0.55);
+}
+
 /* --- Search --- */
+/* The container spans the full width; let clicks pass through to the list
+   underneath — only the pill itself is interactive. */
 .radial-menu-search {
   position: absolute;
   left: 10px;
@@ -262,6 +316,27 @@
   z-index: 10;
   display: flex;
   justify-content: flex-end;
+  pointer-events: none;
+}
+
+/* When expanded, list text fades out as it approaches the search bar.
+   Solid tint up to the bar's top edge (61% of 72px = 44px), then dissolves
+   into the surface; covers the 10px gap below the bar so no text slivers. */
+.radial-menu-search::before {
+  content: "";
+  position: absolute;
+  left: -10px;
+  right: -10px;
+  bottom: -10px;
+  height: 72px;
+  background: linear-gradient(to top, var(--radial-search-fade, rgba(30, 30, 30, 0.6)) 61%, transparent);
+  opacity: 0;
+  transition: opacity 0.3s ease;
+  pointer-events: none;
+}
+
+.radial-menu-search.expanded::before {
+  opacity: 1;
 }
 
 .radial-menu-search-pill {
@@ -271,13 +346,14 @@
   width: 34px;
   border-radius: 17px;
   background: rgba(255, 255, 255, 0.12);
-  backdrop-filter: blur(40px) saturate(180%);
-  -webkit-backdrop-filter: blur(40px) saturate(180%);
+  backdrop-filter: blur(64px) saturate(200%);
+  -webkit-backdrop-filter: blur(64px) saturate(200%);
   border: 0.5px solid rgba(255, 255, 255, 0.2);
   box-shadow: 0 2px 12px rgba(0, 0, 0, 0.1), inset 0 0.5px 0 rgba(255, 255, 255, 0.2);
   transition: width 0.35s cubic-bezier(0.4, 0, 0.2, 1), border-radius 0.35s ease, background 0.3s ease;
   overflow: hidden;
   cursor: pointer;
+  pointer-events: auto;
 }
 
 .radial-menu-search-pill.expanded {
@@ -294,10 +370,24 @@
   box-shadow: 0 2px 12px rgba(0, 0, 0, 0.25), inset 0 0.5px 0 rgba(255, 255, 255, 0.08);
 }
 
-[data-theme="dark"] .radial-menu-search-pill.expanded,
-[data-theme="dark-solid"] .radial-menu-search-pill.expanded,
+[data-theme="dark"] .radial-menu-search-pill {
+  background: rgba(255, 255, 255, 0.10);
+  border-color: rgba(255, 255, 255, 0.14);
+}
+
+[data-theme="dark"] .radial-menu-search-pill.expanded {
+  background: rgba(30, 30, 30, 0.18);
+  border-color: rgba(255, 255, 255, 0.16);
+}
+
+[data-theme="dark-solid"] .radial-menu-search-pill.expanded {
+  background: rgba(20, 20, 22, 0.45);
+  border-color: rgba(255, 255, 255, 0.12);
+}
+
 [data-theme="deep-blue"] .radial-menu-search-pill.expanded {
-  background: rgba(255, 255, 255, 0.08);
+  background: rgba(10, 22, 40, 0.5);
+  border-color: rgba(255, 255, 255, 0.12);
 }
 
 .radial-menu-search-icon {
@@ -349,6 +439,15 @@
   color: var(--text-tertiary);
 }
 
+/* --text-tertiary is #48484A in the transparent theme — unreadable on acrylic */
+[data-theme="dark"] .radial-menu-search-input::placeholder {
+  color: rgba(255, 255, 255, 0.45);
+}
+
+[data-theme="dark"] .radial-menu-search-icon {
+  color: rgba(255, 255, 255, 0.75);
+}
+
 /* --- Empty State --- */
 .radial-menu-empty {
   display: flex;
@@ -361,5 +460,9 @@
 
 [data-theme="dark"] .radial-menu-empty, [data-theme="dark-solid"] .radial-menu-empty, [data-theme="deep-blue"] .radial-menu-empty {
   color: rgba(255, 255, 255, 0.3);
+}
+
+[data-theme="dark"] .radial-menu-empty {
+  color: rgba(255, 255, 255, 0.45);
 }
 
