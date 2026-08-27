@@ -110,8 +110,18 @@
   width: 28px;
   height: 28px;
   flex-shrink: 0;
-  border-radius: 8px;
-  object-fit: contain;
+}
+
+/* Brand V two-tone tints per theme (strokes filled via vars in VLogo.tsx) */
+:root {
+  --v-stroke-main: #6d7280; /* long left stroke — gray */
+  --v-stroke-side: #b4b9c2; /* short right stroke — light gray */
+}
+[data-theme="dark"] .sidebar-logo,
+[data-theme="dark-solid"] .sidebar-logo,
+[data-theme="deep-blue"] .sidebar-logo {
+  --v-stroke-main: #f0f0f3;
+  --v-stroke-side: #9fa3ad;
 }
 
 .sidebar-brand {

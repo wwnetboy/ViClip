@@ -10,6 +10,8 @@ import { useSettingsStore } from "./stores/settingsStore";
 import Toast from "./components/Toast";
 import { useThemeSync } from "./hooks/useThemeSync";
 import { Icons } from "./components/Icons";
+// Inline brand mark so its stroke colors can follow themes via CSS vars.
+import { VLogo } from "./components/VLogo";
 import i18n from "./i18n";
 
 const PANEL_MAP: Record<string, { titleKey: string; component: React.ReactNode }> = {
@@ -141,7 +143,7 @@ function App() {
         data-tauri-drag-region
       >
         <div className="sidebar-header" data-tauri-drag-region>
-          <img className="sidebar-logo" src="/logo.png" alt="logo" />
+          <VLogo className="sidebar-logo v-logo" />
           <span className="sidebar-brand">{t("brand.name")}</span>
         </div>
 
