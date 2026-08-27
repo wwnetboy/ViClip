@@ -138,11 +138,14 @@
   cursor: pointer;
   --color: #32a6ff;
   box-shadow: 0 0.5px 0 0 rgba(255,255,255,0.35) inset;
-  transition: box-shadow 300ms ease, transform 300ms ease, border-color 300ms ease;
-  animation: cardEnter 0.45s cubic-bezier(0.22, 1, 0.36, 1) both;                      
-  animation-delay: calc(var(--enter-delay, 0) * 55ms);                                 
-  content-visibility: auto;                                                            
-  contain-intrinsic-size: auto 100px;
+  /* Hover effects avoid `transform` — the cardEnter keyframes' fill would override it */
+  transition: box-shadow 300ms ease, border-color 300ms ease,
+    padding-top 160ms cubic-bezier(0.2, 0.9, 0.3, 1),
+    padding-bottom 160ms cubic-bezier(0.2, 0.9, 0.3, 1),
+    margin-top 160ms cubic-bezier(0.2, 0.9, 0.3, 1),
+    translate 160ms cubic-bezier(0.2, 0.9, 0.3, 1);
+  animation: cardEnter 0.45s cubic-bezier(0.22, 1, 0.36, 1) both;
+  animation-delay: calc(var(--enter-delay, 0) * 55ms);
 }
 
 .notification:hover {
@@ -169,28 +172,18 @@
   padding: 0.65rem 0.5rem 0.4rem 1rem;
   font-weight: var(--weight-medium);
   font-size: var(--text-sm);
-  transition: transform 300ms ease;
   display: flex;
   align-items: center;
   justify-content: space-between;
 }
 
-.notification:hover .notititle {
-  transform: translateX(0.15rem);
-}
-
 .notibody {
   color: var(--text-primary);
   padding: 0 1rem 0.65rem;
-  transition: transform 300ms ease;
   font-size: var(--text-base);
   line-height: 1.5;
   min-height: calc(2 * 1.5 * 14px);
   word-break: break-all;
-}
-
-.notification:hover .notibody {
-  transform: translateX(0.25rem);
 }
 
 .notification.skeleton {
@@ -992,4 +985,3 @@
     transform: scale(1);
   }
 }
-

@@ -335,10 +335,12 @@ pub fn get_clipboard_records(
     search: Option<String>,
     limit: Option<u32>,
     record_type: Option<String>,
+    offset: Option<u32>,
 ) -> Result<Vec<serde_json::Value>, String> {
     let state = app.state::<DbState>();
     let conn = state.conn.lock().map_err(|e| e.to_string())?;
     let lim = limit.unwrap_or(200);
+    let off = offset.unwrap_or(0);
 
     let mut sql = String::from(
         "SELECT id, type, content, source_app, created_at FROM clipboard_records"
@@ -361,8 +363,9 @@ pub fn get_clipboard_records(
         param_values.push(escaped);
     }
 
-    sql.push_str(" ORDER BY created_at DESC LIMIT ?");
+    sql.push_str(" ORDER BY created_at DESC LIMIT ? OFFSET ?");
     param_values.push(lim.to_string());
+    param_values.push(off.to_string());
 
     let mut stmt = conn.prepare(&sql).map_err(|e| e.to_string())?;
 

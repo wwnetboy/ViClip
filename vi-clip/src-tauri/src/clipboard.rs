@@ -444,59 +444,80 @@ fn get_clipboard_change_count() -> u32 {
     }
 }
 
-/// Insert a new record into the DB and emit clipboard-update.
-/// Skips insertion only if the most recent record has identical type and content
-/// AND was created within the last 2 seconds (debounce window).
-/// Re-copies after 2 seconds are treated as intentional and recorded normally.
+/// Insert a record into the DB and emit clipboard-update.
+/// Content dedupe is bump-to-top: if the same type+content already exists,
+/// its created_at is refreshed so the original row surfaces, no clone row
+/// is added. Rapid re-captures (<1s) of the current newest record are
+/// swallowed entirely to avoid redundant churn.
 fn insert_and_emit(app: &AppHandle, record_type: &str, content: &str) {
     let one_second_ago = chrono::Utc::now() - chrono::Duration::seconds(1);
     let cutoff = one_second_ago.to_rfc3339();
-
-    let is_duplicate: bool = {
-        let state = app.state::<crate::db::DbState>();
-        let x = match state.conn.lock() {
-            Ok(conn) => conn.query_row(
-                "SELECT type, content, created_at FROM clipboard_records ORDER BY created_at DESC LIMIT 1",
-                [],
-                |row| {
-                    let last_type: String = row.get(0)?;
-                    let last_content: String = row.get(1)?;
-                    let last_created: String = row.get(2)?;
-                    Ok(last_type == record_type && last_content == content && last_created >= cutoff)
-                },
-            )
-            .unwrap_or(false),
-            Err(_) => false,
-        };
-        x
-    };
-
-    if is_duplicate {
-        return;
-    }
-
-    let id = uuid::Uuid::new_v4().to_string();
     let now = chrono::Utc::now().to_rfc3339();
-    {
-        let state = app.state::<crate::db::DbState>();
-        let _x = match state.conn.lock() {
-            Ok(conn) => conn.execute(
-                "INSERT INTO clipboard_records (id, type, content, source_app, created_at) VALUES (?1, ?2, ?3, ?4, ?5)",
-                rusqlite::params![id, record_type, content, "", &now],
-            ).ok(),
-            Err(_) => None,
-        };
+
+    let state = app.state::<crate::db::DbState>();
+    let conn = state.conn.lock().unwrap_or_else(|e| e.into_inner());
+
+    // Newest matching record anywhere in history (not just the global top).
+    let existing: Option<(String, bool)> = conn
+        .query_row(
+            "SELECT id, created_at >= ?1 FROM clipboard_records \
+             WHERE type = ?2 AND content = ?3 ORDER BY created_at DESC LIMIT 1",
+            rusqlite::params![&cutoff, &record_type, &content],
+            |row| Ok((row.get::<_, String>(0)?, row.get::<_, bool>(1)?)),
+        )
+        .ok();
+
+    match existing {
+        // Same content captured again moments ago and it already sits on
+        // top — nothing observable would change, skip the write.
+        Some((_, true)) => return,
+        // Seen before: refresh its timestamp so the row jumps to the top.
+        Some((id, _)) => {
+            if conn
+                .execute(
+                    "UPDATE clipboard_records SET created_at = ?1 WHERE id = ?2",
+                    rusqlite::params![&now, &id],
+                )
+                .is_err()
+            {
+                return;
+            }
+            app.emit(
+                "clipboard-update",
+                serde_json::json!({
+                    "id": id,
+                    "type": record_type,
+                    "content": content,
+                    "source_app": "",
+                    "created_at": now,
+                }),
+            )
+            .ok();
+        }
+        None => {
+            let id = uuid::Uuid::new_v4().to_string();
+            if conn
+                .execute(
+                    "INSERT INTO clipboard_records (id, type, content, source_app, created_at) VALUES (?1, ?2, ?3, ?4, ?5)",
+                    rusqlite::params![id, record_type, content, "", &now],
+                )
+                .is_err()
+            {
+                return;
+            }
+            app.emit(
+                "clipboard-update",
+                serde_json::json!({
+                    "id": id,
+                    "type": record_type,
+                    "content": content,
+                    "source_app": "",
+                    "created_at": now,
+                }),
+            )
+            .ok();
+        }
     }
-    app.emit(
-        "clipboard-update",
-        serde_json::json!({
-            "id": id,
-            "type": record_type,
-            "content": content,
-            "source_app": "",
-            "created_at": now,
-        }),
-    ).ok();
 }
 
 pub fn sync_monitor_cache(handle: &AppHandle) {

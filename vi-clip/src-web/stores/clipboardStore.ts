@@ -10,11 +10,17 @@ export type ClipType = (typeof CLIP_TYPES)[number];
 
 const MAX_THUMB_CACHE = 50;
 const MAX_IMAGE_CACHE = 20;
+const PAGE_SIZE = 50;
+
+// Bumped on every page fetch so responses from a superseded
+// query (search/category changed mid-flight) are discarded.
+let fetchSeq = 0;
 
 interface ClipboardState {
   records: ClipboardRecord[];
   search: string;
   loading: boolean;
+  hasMore: boolean;
   thumbnailCache: Record<string, string>;
   thumbnailCacheOrder: string[];
   imageCache: Record<string, string>;
@@ -26,6 +32,7 @@ interface ClipboardState {
   setSearch: (s: string) => void;
   setCategory: (c: ClipType) => void;
   loadRecords: () => Promise<void>;
+  loadMore: () => Promise<void>;
   deleteRecord: (id: string) => Promise<void>;
   pasteRecord: (record: ClipboardRecord) => Promise<void>;
   getThumbnail: (record: ClipboardRecord) => Promise<string>;
@@ -80,10 +87,46 @@ function addToCache(
   return { cache: newCache, order: newOrder };
 }
 
-export const useClipboardStore = create<ClipboardState>((set, get) => ({
-  records: [],
+type SetState = (
+  partial: Partial<ClipboardState> | ((state: ClipboardState) => Partial<ClipboardState>),
+) => void;
+
+// One page of records. reset=true replaces the list (first page /
+// search / category change), otherwise results are appended.
+async function fetchPage(set: SetState, get: () => ClipboardState, offset: number, reset: boolean) {
+  const seq = ++fetchSeq;
+  set({ loading: true });
+  try {
+    const s = get().search || undefined;
+    const cat = get().category !== "all" ? get().category : undefined;
+    const page = await invoke<ClipboardRecord[]>("get_clipboard_records", {
+      search: s,
+      limit: PAGE_SIZE,
+      recordType: cat,
+      offset,
+    });
+    if (seq !== fetchSeq) return;
+    set((state) => {
+      if (reset) return { records: page, hasMore: page.length === PAGE_SIZE };
+      // clipboard-update may have prepended rows while the user was
+      // paging; drop anything already present instead of duplicating.
+      const known = new Set(state.records.map((r) => r.id));
+      return {
+        records: [...state.records, ...page.filter((r) => !known.has(r.id))],
+        hasMore: page.length === PAGE_SIZE,
+      };
+    });
+  } catch (e) {
+    console.error("Failed to load clipboard records:", e);
+  } finally {
+    if (seq === fetchSeq) set({ loading: false });
+  }
+}
+
+export const useClipboardStore = create<ClipboardState>((set, get) => ({  records: [],
   search: "",
   loading: false,
+  hasMore: false,
   thumbnailCache: {},
   thumbnailCacheOrder: [],
   imageCache: {},
@@ -97,11 +140,14 @@ export const useClipboardStore = create<ClipboardState>((set, get) => ({
 
     listen<ClipboardRecord>("clipboard-update", (event) => {
       const newRecord = event.payload;
-      set((state) => {
-        // Skip if record with same ID already exists (prevents loadRecords race)
-        if (state.records.some((r) => r.id === newRecord.id)) return state;
-        return { records: [newRecord, ...state.records].slice(0, 2000) };
-      });
+      set((state) => ({
+        // Backend bumps re-copied content instead of cloning it: a known
+        // id arriving here carries a fresh created_at, so lift it to top.
+        records: [
+          newRecord,
+          ...state.records.filter((r) => r.id !== newRecord.id),
+        ].slice(0, 2000),
+      }));
     }).then((fn) => {
       unlisten = fn;
     });
@@ -119,22 +165,12 @@ export const useClipboardStore = create<ClipboardState>((set, get) => ({
   setSearch: (s) => set({ search: s }),
   setCategory: (c) => set({ category: c }),
 
-  loadRecords: async () => {
-    set({ loading: true });
-    try {
-      const s = get().search || undefined;
-      const cat = get().category !== "all" ? get().category : undefined;
-      const records = await invoke<ClipboardRecord[]>("get_clipboard_records", {
-        search: s,
-        limit: 2000,
-        recordType: cat,
-      });
-      set({ records });
-    } catch (e) {
-      console.error("Failed to load clipboard records:", e);
-    } finally {
-      set({ loading: false });
-    }
+  loadRecords: () => fetchPage(set, get, 0, true),
+
+  loadMore: async () => {
+    const { records, hasMore, loading } = get();
+    if (!hasMore || loading) return;
+    await fetchPage(set, get, records.length, false);
   },
 
   deleteRecord: async (id: string) => {

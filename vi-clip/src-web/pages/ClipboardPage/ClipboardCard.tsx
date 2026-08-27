@@ -13,10 +13,16 @@ import { formatTime, getFileName, TYPE_META } from "./utils";
 
 interface ClipboardCardProps {
   record: ClipboardRecord;
-  index: number;
+  /** Stagger delay for the enter animation */
+  index?: number;
   getTypeLabel: (type: string) => string;
   onPaste: (r: ClipboardRecord) => void;
   onDelete: (id: string) => void;
+  /** Keyboard-navigation focus ring */
+  highlighted?: boolean;
+  /** Slide up while the card below is hovered (symmetric push-apart look) */
+  retreat?: boolean;
+  onHoverChange?: (record: ClipboardRecord | null) => void;
 }
 
 let previewCounter = 0;
@@ -38,10 +44,13 @@ async function canOpenPreview(limitMessage: string): Promise<boolean> {
 
 function ClipboardCardInner({
   record,
-  index,
+  index = 0,
   getTypeLabel,
   onPaste,
   onDelete,
+  highlighted,
+  retreat,
+  onHoverChange,
 }: ClipboardCardProps) {
   const { t } = useTranslation();
   const meta = TYPE_META[record.type] || TYPE_META.text;
@@ -214,9 +223,11 @@ function ClipboardCardInner({
   return (
     <>
       <div
-        className={`notification clipboard-card type-${record.type}`}
+        className={`notification clipboard-card type-${record.type}${highlighted ? " card-highlighted" : ""}${retreat ? " card-retreat" : ""}`}
         style={{ "--enter-delay": index } as React.CSSProperties}
         {...clickProps}
+        onMouseEnter={onHoverChange ? () => onHoverChange(record) : undefined}
+        onMouseLeave={onHoverChange ? () => onHoverChange(null) : undefined}
         onContextMenu={handleContextMenu}
       >
         <div className="noticontent">

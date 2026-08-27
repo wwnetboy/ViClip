@@ -38,6 +38,22 @@
   margin-bottom: 8px;
 }
 
+/* Hover: the hovered card grows 4px from its CENTER — top edge rises 2px
+   (margin-top -2 lifts the box, padding-top offsets the content so it
+   stays put on screen), bottom edge extends 2px. The virtual list measures
+   the wrapper +2px taller, pushing the cards below down 2px; the cards
+   above retreat -2px via .card-retreat. All gaps stay 8px. */
+.clipboard-card:hover {
+  padding-top: 2px;
+  padding-bottom: 2px;
+  margin-top: -2px;
+  z-index: 1;
+}
+
+.clipboard-card.card-retreat {
+  translate: 0 -2px;
+}
+
 .clipboard-card.type-text {
   --color: #007AFF;
 }
@@ -297,4 +313,79 @@
   display: flex;
   align-items: center;
   flex-shrink: 0;
+}
+
+/* === Lazy-loading list wrapper (relays flex sizing to Virtuoso scroller) === */
+.clipboard-list-wrap {
+  display: flex;
+  flex-direction: column;
+  flex: 1;
+  min-height: 0;
+  position: relative;
+}
+
+/* Keyboard-navigation focus ring */
+.clipboard-card.card-highlighted {
+  outline: 2px solid var(--color);
+  outline-offset: -1px;
+}
+
+/* "N new records" pill shown while scrolled away from top */
+.new-records-pill {
+  position: absolute;
+  top: 8px;
+  left: 50%;
+  transform: translateX(-50%);
+  z-index: 5;
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  padding: 5px 12px;
+  border: none;
+  border-radius: 999px;
+  background: rgba(0, 0, 0, 0.65);
+  color: #fff;
+  font-size: var(--text-sm);
+  line-height: 1;
+  cursor: pointer;
+  backdrop-filter: blur(8px);
+  -webkit-backdrop-filter: blur(8px);
+  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.25);
+}
+.new-records-pill:hover {
+  background: rgba(0, 0, 0, 0.8);
+}
+
+/* Bottom loading indicator for incremental page fetches */
+.list-footer-loading {
+  display: flex;
+  justify-content: center;
+  align-items: center;
+  gap: 6px;
+  padding: 10px 0 14px;
+}
+.list-footer-loading span {
+  width: 6px;
+  height: 6px;
+  border-radius: 50%;
+  background: currentColor;
+  opacity: 0.3;
+  animation: footer-dot-pulse 1s ease-in-out infinite;
+}
+.list-footer-loading span:nth-child(2) {
+  animation-delay: 0.15s;
+}
+.list-footer-loading span:nth-child(3) {
+  animation-delay: 0.3s;
+}
+@keyframes footer-dot-pulse {
+  0%,
+  100% {
+    opacity: 0.25;
+    transform: translateY(0);
+  }
+  50% {
+    opacity: 0.9;
+    transform: translateY(-2px);
+  }
 }
