@@ -32,8 +32,10 @@ ViClip is a lightweight desktop productivity suite that appears as a floating wi
 ### Clipboard Manager
 
 - Automatically records text, image, link, and file copy history
-- Content hash deduplication with intelligent duplicate filtering
+- Dedup with bump-to-top: re-copying existing content refreshes the original record to the top instead of creating a clone
 - Keyword search and type filtering
+- Incremental pagination for large histories — smooth scrolling even with thousands of records
+- Keyboard navigation: arrow keys to select, Enter to paste
 - Single-click / double-click to paste at cursor position (configurable)
 - Right-click context menu: copy content, delete records
 - Configurable retention period (1 day / 1 week / 1 month / 3 months / forever) with auto cleanup
@@ -66,14 +68,15 @@ ViClip is a lightweight desktop productivity suite that appears as a floating wi
 ### Compact Window
 
 - `Ctrl + Alt + Right Click` to summon a popup at cursor position
-- Contains Clipboard, Quick Phrases, and Translation tabs
-- Category filtering, hover-tab-switching, scroll-wheel selection
+- Clipboard and Quick Phrases tabs, switching on hover
+- Category filtering and scroll-wheel selection with silky transition animations
+- Glassmorphism search bar: circular button expands into a full-width live search field
 - Click to paste without opening the main window
 - Can be toggled in settings
 
 ### System Features
 
-- **Global Hotkey**: Customizable keyboard shortcut to summon the main window, supports Win key combos and Win+V shortcut
+- **Global Hotkey**: Customizable shortcut to summon the main window — any Ctrl / Alt / Shift / Win combo (letters, digits, numpad, F-keys) including Win+V; powered by a low-level keyboard hook on Windows
 - **Mouse Gesture**: `Ctrl + Shift + Right Click` to toggle main window visibility
 - **System Tray**: Left-click toggles window, right-click opens menu
 - **Five Themes**: Light / Dark Solid / Deep Blue / Dark Translucent / Follow System
@@ -219,7 +222,7 @@ vi-clip/
 │   ├── src/
 │   │   ├── lib.rs          # App entry, window creation, command registration
 │   │   ├── db.rs           # SQLite CRUD, settings, storage migration
-│   │   ├── clipboard.rs    # Clipboard monitor (800ms polling)
+│   │   ├── clipboard.rs    # Clipboard monitor (500ms polling)
 │   │   ├── paste.rs        # Paste (text/image/file)
 │   │   ├── shortcut.rs     # Global hotkey + mouse hook
 │   │   ├── translator.rs   # Translation engines (AI / Google / Baidu / Youdao / Tencent / Volctrans)
